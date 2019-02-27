@@ -1,0 +1,407 @@
+#!/usr/bin/env bash
+VERSION=0.0.1
+
+##
+##  awful lock screen
+##
+
+# Defaults
+ringcolor=80808099
+insidecolor=80808033
+separatorcolor=80808033
+keyhlcolor=00ff0099
+bshlcolor=ffff0099
+verifcolor=00ffff99
+wrongcolor=ff000099
+textcolor=00000099
+timecolor=ffffffff
+datecolor=ffffff80
+greetercolor=ffffffff
+layoutcolor=ffffff80
+greetertext='Welcome Back'
+lockbox=000000cc
+lockboxshadow=00000080
+font="sans-serif"
+screen=0
+span=false
+blurlvl=1
+
+# Load config file
+USER_CONF="$HOME/.config/awfulrc"
+if [ -e $USER_CONF ]; then
+    source "$USER_CONF"
+fi
+
+# Paths and filenames
+CACHE_DIR="$HOME/.cache/awful"
+CUR_DIR="$CACHE_DIR/current"
+LOCK_NORMAL="$CUR_DIR/normal.png"
+LOCK_DIM="$CUR_DIR/dim.png"
+LOCK_BLUR="$CUR_DIR/blur.png"
+LOCK_DIMBLUR="$CUR_DIR/dimblur.png"
+LOCK_PIXEL="$CUR_DIR/pixel.png"
+
+
+# Get image path from argument or random image from path
+get_image_path() {
+    local path="$1"
+    if [ ! -d "$path" ]; then
+        IMG_PATH="$path"
+        return
+    fi
+    dir=("$path"/*)
+    dir="${dir[RANDOM % ${#dir[@]}]}"
+    get_image_path "$dir"
+}
+
+# Get list of displays
+get_display_list () {
+    local NUM=0
+    mapfile -t ACTIVE < <( xrandr --listactivemonitors )
+    for DISP in "${ACTIVE[@]:1}"; do
+        (( NUM++ ))
+        DISP=$(echo $DISP | sed -r 's/\/[0-9]*//g')
+        IFS=' ' read -r -a INFO <<< "$DISP"
+        DISP_LIST+=("$NUM ${INFO[3]} ${INFO[2]}")
+    done
+}
+
+# Get total combined display resolution
+get_total_size () {
+    TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
+}
+
+# Support for custom DPI
+logical_px() {
+    local DPI=$(xrdb -query | awk '/Xft.dpi/ {print $2}')
+    if [ -z "$DPI" ]; then
+        echo $1
+    else
+        local SCALE=$(echo "scale=2; $DPI / 96.0" | bc)
+        if [ $(echo "$SCALE > 1.25" | bc -l) -eq 0 ]; then
+            echo $1
+        else
+            echo "$SCALE * $1 / 1" | bc
+        fi
+    fi
+}
+
+# Resize image and apply effects
+resize_and_render () {
+    local base=$1
+    local path=$2
+    local resolution=$3
+
+    RES_NORMAL="$2/normal.png"
+    RES_DIM="$2/dim.png"
+    RES_BLUR="$2/blur.png"
+    RES_DIMBLUR="$2/dimblur.png"
+    RES_PIXEL="$2/pixel.png"
+
+    # resize
+    eval convert "$base" \
+        -resize "$resolution""^" \
+        -gravity center \
+        -extent "$resolution" \
+        "$RES_NORMAL"
+
+    # dim
+    eval convert "$RES_NORMAL" \
+        -fill black \
+        -colorize 40% \
+        "$RES_DIM"
+
+    # blur
+    blur_shrink=$(echo "scale=2; 20 / $blurlvl" | bc)
+    blur_sigma=$(echo "scale=2; 0.6 * $blurlvl" | bc)
+    eval convert "$RES_NORMAL" \
+        -filter Gaussian \
+        -resize "$blur_shrink%" \
+        -define "filter:sigma=$blur_sigma" \
+        -resize "$resolution^" \
+        -gravity center \
+        -extent "$resolution" \
+        "$RES_BLUR"
+
+    # dim + blur
+    eval convert "$RES_DIM" \
+        -filter Gaussian \
+        -resize "$blur_shrink%" \
+        -define "filter:sigma=$blur_sigma" \
+        -resize "$resolution^" \
+        -gravity center \
+        -extent "$resolution" \
+        "$RES_DIMBLUR"
+
+    # pixel
+    eval convert "$RES_NORMAL" \
+        -scale 10% \
+        -scale 1000% \
+        "$RES_PIXEL"
+}
+
+# create lock box background
+create_lockbox () {
+    LOCKBOX=$CUR_DIR/rectangle.png
+    local shadow=$CUR_DIR/shadow.png
+    # create box
+    convert -size 200x300 xc:\#"$lockbox" -fill none $LOCKBOX
+    # create shadow
+    convert $LOCKBOX \
+        \( -clone 0 -background \#$lockboxshadow -shadow 100x10+0+0 \) +swap \
+        -background none -layers merge +repage $shadow
+    # create shadow cutout
+    composite -compose Dst_Out -gravity center \
+        $LOCKBOX $shadow -alpha Set $shadow
+    # combine box and shadow
+    convert $shadow $LOCKBOX -geometry +20+20 -composite $LOCKBOX
+    [[ $shadow ]] && rm $shadow
+}
+
+# Delete and recreate path
+purge_cache () {
+    if [[ -d "$1" ]]; then
+        rm -r "$1"
+    fi
+    mkdir -p "$1"
+}
+
+# Update cached images
+update () {
+    local wallpaper=$1
+    get_image_path "$wallpaper"
+    get_display_list
+    get_total_size
+
+    echo "Caching lock screen images..."
+    echo "Found: $IMG_PATH"
+
+    # get info for each display
+    for DISP in "${DISP_LIST[@]}"; do
+        DISP_NUM="$(cut -d" " -f1 <<<"${DISP}")"
+        DISP_DEV="$(cut -d" " -f2 <<<"${DISP}")"
+        DISP_GEO=($(cut -d" " -f3 <<<"${DISP}"))
+        DISP_POSX=$(cut -d"+" -f2 <<<"${DISP_GEO}")
+        DISP_POSY=$(cut -d"+" -f3 <<<"${DISP_GEO}")
+        DISP_RESX="$(cut -d"x" -f1 <<<"${DISP_GEO%%+*}")"
+        DISP_RESY="$(cut -d"x" -f2 <<<"${DISP_GEO%%+*}")"
+        DISP_CACHE="$CACHE_DIR/$DISP_NUM-$DISP_DEV"
+
+        # get positions to draw lock box
+        if [[ $DISP_NUM -eq "$screen" ]] || [[ "$screen" -eq 0 ]]; then
+            DRAWX=$((${DISP_RESX} / 2 - $(logical_px 120)))
+            DRAWY=$((${DISP_RESY} / 2 - $(logical_px 170)))
+            DRAWPOS+="+$(($DRAWX+$DISP_POSX))+$(($DRAWY+$DISP_POSY)) "
+        fi
+
+        purge_cache $DISP_CACHE
+
+        # if spanning, only make one set of images
+        if [ "$span" = true ] && [ $DISP_NUM -gt 1 ]; then
+            continue
+        fi
+
+        if [ "$span" = true ]; then
+            # create one large image spanning multiple displays
+            resize_and_render $IMG_PATH $DISP_CACHE $TOTAL_SIZE
+        else
+            # or create sets of images scaled to each displays resolution
+            resize_and_render $IMG_PATH $DISP_CACHE ${DISP_GEO%%+*}
+            # set position of each display on canvas
+            PARAM_NORMAL="$PARAM_NORMAL $RES_NORMAL -geometry +$DISP_POSX+$DISP_POSY -composite "
+            PARAM_DIM="$PARAM_DIM $RES_DIM -geometry +$DISP_POSX+$DISP_POSY -composite "
+            PARAM_BLUR="$PARAM_BLUR $RES_BLUR -geometry +$DISP_POSX+$DISP_POSY -composite "
+            PARAM_DIMBLUR="$PARAM_DIMBLUR $RES_DIMBLUR -geometry +$DISP_POSX+$DISP_POSY -composite "
+            PARAM_PIXEL="$PARAM_PIXEL $RES_PIXEL -geometry +$DISP_POSX+$DISP_POSY -composite "
+        fi
+
+    done
+
+    purge_cache $CUR_DIR
+
+    if [ "$span" = true ] || [ ${#DISP_LIST[@]} -lt 2 ]; then
+        # 1 display or spanning, just copy to current dir
+        cp $RES_NORMAL $LOCK_NORMAL
+        cp $RES_DIM $LOCK_DIM
+        cp $RES_BLUR $LOCK_BLUR
+        cp $RES_DIMBLUR $LOCK_DIMBLUR
+        cp $RES_PIXEL $LOCK_PIXEL
+    else
+        # or create canvas at the total resolution
+        convert -size $TOTAL_SIZE 'xc:black' $LOCK_NORMAL
+        cp $LOCK_NORMAL $LOCK_DIM
+        cp $LOCK_NORMAL $LOCK_BLUR
+        cp $LOCK_NORMAL $LOCK_DIMBLUR
+        cp $LOCK_NORMAL $LOCK_PIXEL
+
+        # combine each display's image on canvas
+        convert $LOCK_NORMAL $PARAM_NORMAL $LOCK_NORMAL
+        convert $LOCK_DIM $PARAM_DIM $LOCK_DIM
+        convert $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
+        convert $LOCK_DIMBLUR $PARAM_DIMBLUR $LOCK_DIMBLUR
+        convert $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
+    fi
+
+    # create lock box and get positions
+    create_lockbox
+    for POS in ${DRAWPOS[@]}; do
+        PARAM_BOX="$PARAM_BOX $LOCKBOX -geometry $POS -composite "
+    done
+    # combine lock boxes with each image
+    convert $LOCK_NORMAL $PARAM_BOX $LOCK_NORMAL
+    convert $LOCK_DIM $PARAM_BOX $LOCK_DIM
+    convert $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
+    convert $LOCK_DIMBLUR $PARAM_BOX $LOCK_DIMBLUR
+    convert $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
+
+    [[ $LOCKBOX ]] && rm $LOCKBOX
+
+}
+
+# Run before locking
+prelock() {
+    # pause dunst
+    if [ ! -z "$(pidof dunst)" ]; then
+        pkill -u "$USER" -USR1 dunst
+    fi
+}
+
+# Call i3lock
+lock() {
+    i3lock \
+        -i "$1" \
+        --screen "$screen" \
+        --indpos='x+w/2:y+h/2' --radius=80 --ring-width=20 --line-uses-inside \
+        --ringcolor=$ringcolor --ringvercolor=$ringcolor --ringwrongcolor=$ringcolor \
+        --insidecolor=$insidecolor --insidevercolor=$verifcolor --insidewrongcolor=$wrongcolor \
+        --keyhlcolor=$keyhlcolor --bshlcolor=$bshlcolor --separatorcolor=$separatorcolor \
+        --wrongtext='Access Denied' --wrongcolor="$textcolor" --wrong-font="$font" --wrongsize=16 \
+        --veriftext='Verifying...' --verifcolor="$textcolor" --verif-font="$font" --verifsize=16 \
+        --noinputtext='' --locktext="Locking..." --lockfailedtext="Lock failed!" \
+        --timestr="%H:%M:%S" --clock \
+        --timepos='ix+0:iy-120' --time-align 0 \
+        --timecolor="$timecolor" --time-font="$font" \
+        --datestr "%A, %m %Y" \
+        --datepos='ix+0:iy-100' --date-align 0 \
+        --datecolor="$datecolor" --date-font="$font" \
+        --greetertext="$greetertext" \
+        --greeterpos='ix+0:iy+120' --greeter-align 0 \
+        --greetercolor="$greetercolor" --greeter-font="$font" --greetersize=24 \
+        --keylayout 0 \
+        --layoutpos='ix+0:iy+140' --layout-align 0 \
+        --layoutcolor="$layoutcolor" --layout-font="$font" --layoutsize=12 \
+        --force-clock $lockargs
+}
+
+# Run after unlocking
+postlock() {
+    # resume dunst
+    if [ ! -z "$(pidof dunst)" ] ; then
+        pkill -u "$USER" -USR2 dunst
+    fi
+}
+
+# Select lock screen effect
+lockselect() {
+    prelock
+    case "$1" in
+        dim)
+            # dim effect
+            lock "$LOCK_DIM"
+            ;;
+        blur)
+            # blur effect
+            lock "$LOCK_BLUR"
+            ;;
+        dimblur)
+            # dim + blur effect
+            lock "$LOCK_DIMBLUR"
+            ;;
+        pixel)
+            # pixel effect
+            lock "$LOCK_PIXEL"
+            ;;
+        *)
+            # normal
+            lock "$LOCK_NORMAL"
+            ;;
+    esac
+    postlock
+}
+
+# Help message
+usage() {
+    echo
+    echo " awful lock screen $VERSION"
+    echo
+    echo "  -h --help"
+    echo "      Display this help message"
+    echo
+    echo "  -u --update"
+    echo "      Update lock screen images"
+    echo "      $ awful -u PATH"
+    echo
+    echo "  -l --lock"
+    echo "      Lock screen with optional effect"
+    echo "      $ awful -l dim"
+    echo
+    echo "  -s --suspend"
+    echo "      Lock screen and suspend system"
+    echo
+    exit 1
+}
+
+# No arguments message
+empty() {
+    echo
+    echo " awful doesn't know what to do!"
+    echo " Try 'awful --help' if you're confused too."
+    echo
+    exit 1
+}
+
+# No arguments
+[[ "$1" = '' ]] && empty
+
+# Parse arguments
+for arg in "$@"; do
+    [[ "${arg:0:1}" = '-' ]] || continue
+    case "$1" in
+        -h | --help)
+            usage
+            break
+            ;;
+        -u | --update)
+            runupdate=true
+            imagepath="$2"
+            shift 2
+            ;;
+        -l | --lock)
+            runlock=true
+            [[ $runsuspend ]] || lockargs="$lockargs -n"
+            [[ ${2:0:1} = '-' ]] && shift 1 || { lockstyle="$2"; shift 2; }
+            ;;
+        -s | --suspend)
+            runsuspend=true
+            ;&
+        --)
+            lockargs="$lockargs ${@:2}"
+            break
+            ;;
+        *)
+            echo "unknown argument: $1"
+            break
+            ;;
+    esac
+done
+
+# Run update
+[[ $runupdate ]] && update "$imagepath"
+
+# Lock screen
+[[ $runlock ]] && lockselect "$lockstyle" && \
+    { [[ $runsuspend ]] && systemctl suspend; }
+
+exit 0
+
+# vim: ft=sh:

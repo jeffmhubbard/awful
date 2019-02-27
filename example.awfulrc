@@ -1,0 +1,42 @@
+# awful config file
+
+# indicator ring color
+ringcolor=80808099
+# inside ring color
+insidecolor=80808033
+# separator color
+separatorcolor=80808033
+# typing color
+keyhlcolor=00ff0099
+# backspace color
+bshlcolor=ffff0099
+# verify inside color
+verifcolor=00ffff99
+# wrong inside color
+wrongcolor=ff000099
+# misc text color
+textcolor=00000099
+# time color
+timecolor=ffffffff
+# date color
+datecolor=ffffff80
+# greeter color
+greetercolor=ffffffff
+# keyboard layout color
+layoutcolor=ffffff80
+# lock box background
+loginbox=00000099
+# lock box shadow
+loginboxshadow=00000080
+# greeter message
+greetertext='Welcome Back'
+# font
+font="sans-serif"
+# screen to display indicator (0 for all)
+screen=0
+# span multiple screens
+span=false
+# blur ammount
+blurlvl=1
+
+# vim: set ft=cfg:
