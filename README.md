@@ -1,5 +1,5 @@
 # awful
-Awful lock screen. Another bash to wrap i3lock-color
+Awful lock screen  
 
 ### Features
 - Mostly themeable
@@ -22,12 +22,11 @@ cd awful
 sudo install -Dm 755 awful /usr/bin/awful
 ```
 
-For suspend with systemd
+##### For suspend with systemd
 ```sh
-sudo install -Dm 644 awful@.service /usr/lib/systemd/user/awful@.service
+sudo install -Dm 644 awful@.service /usr/lib/systemd/system/awful@.service
 sudo systemctl daemon-reload
-systemctl --user enable awful@USER.service
-systemctl --user start awful@USER.service
+sudo systemctl enable awful@$USER.service
 ```
 
 ### Configuration
