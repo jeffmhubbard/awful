@@ -24,8 +24,10 @@ lockboxshadow=00000080
 font="sans-serif"
 screen=0
 span=false
-effects=(blur)
-blurlvl=1
+effects=(dim blur pixel)
+dim=40
+blur=1
+pixel=1000
 
 # Load config file
 USER_CONF="$HOME/.config/awfulrc"
@@ -103,16 +105,16 @@ resize_and_render () {
     for fx in ${effects[@]}; do
         case $fx in
             dim)
-                fx_dim $RES_NORMAL $RES_DIM
+                fx_dim "$RES_NORMAL" "$RES_DIM"
                 chk_dim=true
                 ;;
             blur)
-                fx_blur $RES_NORMAL $RES_BLUR
+                fx_blur "$RES_NORMAL" "$RES_BLUR"
                 chk_blur=true
                 ;;
             pixel)
-                fx_pixel $RES_NORMAL $RES_PIXEL
-                chk_blur=true
+                fx_pixel "$RES_NORMAL" "$RES_PIXEL"
+                chk_pixel=true
                 ;;
         esac
     done
@@ -132,14 +134,14 @@ fx_dim() {
     echo "Apply dim..."
     eval convert "$1" \
         -fill black \
-        -colorize 40% \
+        -colorize "$dim"% \
         "$2"
 }
 
 fx_blur() {
     echo "Apply blur..."
-    shrink=$(echo "scale=2; 20 / $blurlvl" | bc)
-    sigma=$(echo "scale=2; 0.6 * $blurlvl" | bc)
+    shrink=$(echo "scale=2; 20 / $blur" | bc)
+    sigma=$(echo "scale=2; 0.6 * $blur" | bc)
     eval convert "$1" \
         -filter Gaussian \
         -resize "$shrink%" \
@@ -154,7 +156,7 @@ fx_pixel() {
     echo "Apply pixel..."
     eval convert "$1" \
         -scale 10% \
-        -scale 1000% \
+        -scale "$pixel"% \
         "$2"
 }
 

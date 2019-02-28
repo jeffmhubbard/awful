@@ -36,7 +36,13 @@ font="sans-serif"
 screen=0
 # span multiple screens
 span=false
-# blur ammount
-blurlvl=1
+# only apply these effects
+effects=(dim blur pixel)
+# dim (default 40)
+dim=40
+# blur ammount (default 1)
+blur=1
+# pixel ammount (default 1000) *** BROKEN DON'T CHANGE ***
+pixel=1000
 
 # vim: set ft=cfg:

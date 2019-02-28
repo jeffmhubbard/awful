@@ -4,6 +4,7 @@ Awful lock screen
 ### Features
 - Mostly themeable
 - Generates images with various effects
+- Configure which effects are cached
 - Multi-monitor support
 - Other awfulness
 
