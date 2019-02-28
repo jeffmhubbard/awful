@@ -24,6 +24,7 @@ lockboxshadow=00000080
 font="sans-serif"
 screen=0
 span=false
+effects=(blur)
 blurlvl=1
 
 # Load config file
@@ -38,7 +39,6 @@ CUR_DIR="$CACHE_DIR/current"
 LOCK_NORMAL="$CUR_DIR/normal.png"
 LOCK_DIM="$CUR_DIR/dim.png"
 LOCK_BLUR="$CUR_DIR/blur.png"
-LOCK_DIMBLUR="$CUR_DIR/dimblur.png"
 LOCK_PIXEL="$CUR_DIR/pixel.png"
 
 
@@ -92,52 +92,70 @@ resize_and_render () {
     local path=$2
     local resolution=$3
 
-    RES_NORMAL="$2/normal.png"
-    RES_DIM="$2/dim.png"
-    RES_BLUR="$2/blur.png"
-    RES_DIMBLUR="$2/dimblur.png"
-    RES_PIXEL="$2/pixel.png"
+    RES_NORMAL="$path/normal.png"
+    RES_DIM="$path/dim.png"
+    RES_BLUR="$path/blur.png"
+    RES_PIXEL="$path/pixel.png"
 
-    # resize
-    eval convert "$base" \
+    # always make normal
+    fx_resize "$base" "$RES_NORMAL"
+
+    for fx in ${effects[@]}; do
+        case $fx in
+            dim)
+                fx_dim $RES_NORMAL $RES_DIM
+                chk_dim=true
+                ;;
+            blur)
+                fx_blur $RES_NORMAL $RES_BLUR
+                chk_blur=true
+                ;;
+            pixel)
+                fx_pixel $RES_NORMAL $RES_PIXEL
+                chk_blur=true
+                ;;
+        esac
+    done
+
+}
+
+fx_resize() {
+    echo "Resizing..."
+    eval convert "$1" \
         -resize "$resolution""^" \
         -gravity center \
         -extent "$resolution" \
-        "$RES_NORMAL"
+        "$2"
+}
 
-    # dim
-    eval convert "$RES_NORMAL" \
+fx_dim() {
+    echo "Apply dim..."
+    eval convert "$1" \
         -fill black \
         -colorize 40% \
-        "$RES_DIM"
+        "$2"
+}
 
-    # blur
-    blur_shrink=$(echo "scale=2; 20 / $blurlvl" | bc)
-    blur_sigma=$(echo "scale=2; 0.6 * $blurlvl" | bc)
-    eval convert "$RES_NORMAL" \
+fx_blur() {
+    echo "Apply blur..."
+    shrink=$(echo "scale=2; 20 / $blurlvl" | bc)
+    sigma=$(echo "scale=2; 0.6 * $blurlvl" | bc)
+    eval convert "$1" \
         -filter Gaussian \
-        -resize "$blur_shrink%" \
-        -define "filter:sigma=$blur_sigma" \
+        -resize "$shrink%" \
+        -define "filter:sigma=$sigma" \
         -resize "$resolution^" \
         -gravity center \
         -extent "$resolution" \
-        "$RES_BLUR"
+        "$2"
+}
 
-    # dim + blur
-    eval convert "$RES_DIM" \
-        -filter Gaussian \
-        -resize "$blur_shrink%" \
-        -define "filter:sigma=$blur_sigma" \
-        -resize "$resolution^" \
-        -gravity center \
-        -extent "$resolution" \
-        "$RES_DIMBLUR"
-
-    # pixel
-    eval convert "$RES_NORMAL" \
+fx_pixel() {
+    echo "Apply pixel..."
+    eval convert "$1" \
         -scale 10% \
         -scale 1000% \
-        "$RES_PIXEL"
+        "$2"
 }
 
 # create lock box background
@@ -211,7 +229,6 @@ update () {
             PARAM_NORMAL="$PARAM_NORMAL $RES_NORMAL -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_DIM="$PARAM_DIM $RES_DIM -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_BLUR="$PARAM_BLUR $RES_BLUR -geometry +$DISP_POSX+$DISP_POSY -composite "
-            PARAM_DIMBLUR="$PARAM_DIMBLUR $RES_DIMBLUR -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_PIXEL="$PARAM_PIXEL $RES_PIXEL -geometry +$DISP_POSX+$DISP_POSY -composite "
         fi
 
@@ -221,25 +238,22 @@ update () {
 
     if [ "$span" = true ] || [ ${#DISP_LIST[@]} -lt 2 ]; then
         # 1 display or spanning, just copy to current dir
-        cp $RES_NORMAL $LOCK_NORMAL
-        cp $RES_DIM $LOCK_DIM
-        cp $RES_BLUR $LOCK_BLUR
-        cp $RES_DIMBLUR $LOCK_DIMBLUR
-        cp $RES_PIXEL $LOCK_PIXEL
+        [[ -f $RES_NORMAL ]] && cp $RES_NORMAL $LOCK_NORMAL
+        [[ -f $RES_DIM ]] && cp $RES_DIM $LOCK_DIM
+        [[ -f $RES_BLUR ]] && cp $RES_BLUR $LOCK_BLUR
+        [[ -f $RES_PIXEL ]] && cp $RES_PIXEL $LOCK_PIXEL
     else
         # or create canvas at the total resolution
-        convert -size $TOTAL_SIZE 'xc:black' $LOCK_NORMAL
-        cp $LOCK_NORMAL $LOCK_DIM
-        cp $LOCK_NORMAL $LOCK_BLUR
-        cp $LOCK_NORMAL $LOCK_DIMBLUR
-        cp $LOCK_NORMAL $LOCK_PIXEL
+        convert -size $TOTAL_SIZE 'xc:blue' $LOCK_NORMAL
+        [[ $chk_dim ]] && cp $LOCK_NORMAL $LOCK_DIM
+        [[ $chk_blur ]] && cp $LOCK_NORMAL $LOCK_BLUR
+        [[ $chk_pixel ]] && cp $LOCK_NORMAL $LOCK_PIXEL
 
         # combine each display's image on canvas
         convert $LOCK_NORMAL $PARAM_NORMAL $LOCK_NORMAL
-        convert $LOCK_DIM $PARAM_DIM $LOCK_DIM
-        convert $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
-        convert $LOCK_DIMBLUR $PARAM_DIMBLUR $LOCK_DIMBLUR
-        convert $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
+        [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_DIM $LOCK_DIM
+        [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
+        [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
     fi
 
     # create lock box and get positions
@@ -249,10 +263,9 @@ update () {
     done
     # combine lock boxes with each image
     convert $LOCK_NORMAL $PARAM_BOX $LOCK_NORMAL
-    convert $LOCK_DIM $PARAM_BOX $LOCK_DIM
-    convert $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
-    convert $LOCK_DIMBLUR $PARAM_BOX $LOCK_DIMBLUR
-    convert $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
+    [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_BOX $LOCK_DIM
+    [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
+    [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
 
     [[ $LOCKBOX ]] && rm $LOCKBOX
 
@@ -312,10 +325,6 @@ lockselect() {
         blur)
             # blur effect
             lock "$LOCK_BLUR"
-            ;;
-        dimblur)
-            # dim + blur effect
-            lock "$LOCK_DIMBLUR"
             ;;
         pixel)
             # pixel effect
