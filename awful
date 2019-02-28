@@ -42,6 +42,7 @@ LOCK_NORMAL="$CUR_DIR/normal.png"
 LOCK_DIM="$CUR_DIR/dim.png"
 LOCK_BLUR="$CUR_DIR/blur.png"
 LOCK_PIXEL="$CUR_DIR/pixel.png"
+LOCK_MORPH="$CUR_DIR/morph.png"
 
 
 # Get image path from argument or random image from path
@@ -98,10 +99,12 @@ resize_and_render () {
     RES_DIM="$path/dim.png"
     RES_BLUR="$path/blur.png"
     RES_PIXEL="$path/pixel.png"
+    RES_MORPH="$path/morph.png"
 
     # always make normal
     fx_resize "$base" "$RES_NORMAL"
 
+    echo "Applying effects: ${effects[@]}"
     for fx in ${effects[@]}; do
         case $fx in
             dim)
@@ -116,13 +119,16 @@ resize_and_render () {
                 fx_pixel "$RES_NORMAL" "$RES_PIXEL"
                 chk_pixel=true
                 ;;
+            morph)
+                fx_morph "$RES_NORMAL" "$RES_MORPH"
+                chk_morph=true
+                ;;
         esac
     done
 
 }
 
 fx_resize() {
-    echo "Resizing..."
     eval convert "$1" \
         -resize "$resolution""^" \
         -gravity center \
@@ -131,7 +137,6 @@ fx_resize() {
 }
 
 fx_dim() {
-    echo "Apply dim..."
     eval convert "$1" \
         -fill black \
         -colorize "$dim"% \
@@ -139,7 +144,6 @@ fx_dim() {
 }
 
 fx_blur() {
-    echo "Apply blur..."
     shrink=$(echo "scale=2; 20 / $blur" | bc)
     sigma=$(echo "scale=2; 0.6 * $blur" | bc)
     eval convert "$1" \
@@ -153,10 +157,17 @@ fx_blur() {
 }
 
 fx_pixel() {
-    echo "Apply pixel..."
     eval convert "$1" \
         -scale 10% \
         -scale "$pixel"% \
+        "$2"
+}
+
+fx_morph() {
+    eval convert "$1" \
+        -morphology \
+        DilateI \
+        Octagon:3 \
         "$2"
 }
 
@@ -188,16 +199,19 @@ purge_cache () {
 
 # Update cached images
 update () {
+    echo "Updating lock screen images..."
+
     local wallpaper=$1
     get_image_path "$wallpaper"
+    echo "Original: $IMG_PATH"
+
     get_display_list
     get_total_size
-
-    echo "Caching lock screen images..."
-    echo "Found: $IMG_PATH"
+    echo "Found ${#DISP_LIST[@]} display(s) @ $TOTAL_SIZE"
 
     # get info for each display
     for DISP in "${DISP_LIST[@]}"; do
+        echo "Processing: $DISP"
         DISP_NUM="$(cut -d" " -f1 <<<"${DISP}")"
         DISP_DEV="$(cut -d" " -f2 <<<"${DISP}")"
         DISP_GEO=($(cut -d" " -f3 <<<"${DISP}"))
@@ -221,6 +235,7 @@ update () {
             continue
         fi
 
+        echo "Resize and render images..."
         if [ "$span" = true ]; then
             # create one large image spanning multiple displays
             resize_and_render $IMG_PATH $DISP_CACHE $TOTAL_SIZE
@@ -232,6 +247,7 @@ update () {
             PARAM_DIM="$PARAM_DIM $RES_DIM -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_BLUR="$PARAM_BLUR $RES_BLUR -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_PIXEL="$PARAM_PIXEL $RES_PIXEL -geometry +$DISP_POSX+$DISP_POSY -composite "
+            PARAM_MORPH="$PARAM_MORPH $RES_MORPH -geometry +$DISP_POSX+$DISP_POSY -composite "
         fi
 
     done
@@ -244,18 +260,22 @@ update () {
         [[ -f $RES_DIM ]] && cp $RES_DIM $LOCK_DIM
         [[ -f $RES_BLUR ]] && cp $RES_BLUR $LOCK_BLUR
         [[ -f $RES_PIXEL ]] && cp $RES_PIXEL $LOCK_PIXEL
+        [[ -f $RES_MORPH ]] && cp $RES_MORPH $LOCK_MORPH
     else
+        echo "Creating multi-monitor images..."
         # or create canvas at the total resolution
         convert -size $TOTAL_SIZE 'xc:blue' $LOCK_NORMAL
         [[ $chk_dim ]] && cp $LOCK_NORMAL $LOCK_DIM
         [[ $chk_blur ]] && cp $LOCK_NORMAL $LOCK_BLUR
         [[ $chk_pixel ]] && cp $LOCK_NORMAL $LOCK_PIXEL
+        [[ $chk_morph ]] && cp $LOCK_NORMAL $LOCK_MORPH
 
         # combine each display's image on canvas
         convert $LOCK_NORMAL $PARAM_NORMAL $LOCK_NORMAL
         [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_DIM $LOCK_DIM
         [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
         [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
+        [[ $chk_morph ]] && convert $LOCK_MORPH $PARAM_MORPH $LOCK_MORPH
     fi
 
     # create lock box and get positions
@@ -264,13 +284,16 @@ update () {
         PARAM_BOX="$PARAM_BOX $LOCKBOX -geometry $POS -composite "
     done
     # combine lock boxes with each image
+    echo "Drawing lock box..."
     convert $LOCK_NORMAL $PARAM_BOX $LOCK_NORMAL
     [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_BOX $LOCK_DIM
     [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
     [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
+    [[ $chk_morph ]] && convert $LOCK_MORPH $PARAM_BOX $LOCK_MORPH
 
     [[ $LOCKBOX ]] && rm $LOCKBOX
 
+    echo "Done"
 }
 
 # Run before locking
@@ -331,6 +354,10 @@ lockselect() {
         pixel)
             # pixel effect
             lock "$LOCK_PIXEL"
+            ;;
+        morph)
+            # morph effect
+            lock "$LOCK_MORPH"
             ;;
         *)
             # normal
