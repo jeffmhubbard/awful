@@ -101,10 +101,11 @@ resize_and_render () {
     RES_PIXEL="$path/pixel.png"
     RES_MORPH="$path/morph.png"
 
+    echo "Resize and render effects: ${effects[@]}"
+
     # always make normal
     fx_resize "$base" "$RES_NORMAL"
 
-    echo "Applying effects: ${effects[@]}"
     for fx in ${effects[@]}; do
         case $fx in
             dim)
@@ -129,15 +130,14 @@ resize_and_render () {
 }
 
 fx_resize() {
-    eval convert "$1" \
-        -resize "$resolution""^" \
-        -gravity center \
-        -extent "$resolution" \
+    eval magick "$1" \
+        -resize "$resolution^" \
+         -gravity center \
         "$2"
 }
 
 fx_dim() {
-    eval convert "$1" \
+    eval magick "$1" \
         -fill black \
         -colorize "$dim"% \
         "$2"
@@ -146,7 +146,7 @@ fx_dim() {
 fx_blur() {
     shrink=$(echo "scale=2; 20 / $blur" | bc)
     sigma=$(echo "scale=2; 0.6 * $blur" | bc)
-    eval convert "$1" \
+    eval magick "$1" \
         -filter Gaussian \
         -resize "$shrink%" \
         -define "filter:sigma=$sigma" \
@@ -157,36 +157,26 @@ fx_blur() {
 }
 
 fx_pixel() {
-    eval convert "$1" \
+    eval magick "$1" \
         -scale 10% \
         -scale "$pixel"% \
         "$2"
 }
 
 fx_morph() {
-    eval convert "$1" \
-        -morphology \
-        DilateI \
-        Octagon:3 \
+    eval magick "$1" \
+        -morphology DilateI Octagon:3 \
         "$2"
 }
 
 # create lock box background
 create_lockbox () {
     LOCKBOX=$CUR_DIR/rectangle.png
-    local shadow=$CUR_DIR/shadow.png
-    # create box
-    convert -size 200x300 xc:\#"$lockbox" -fill none $LOCKBOX
-    # create shadow
-    convert $LOCKBOX \
-        \( -clone 0 -background \#$lockboxshadow -shadow 100x10+0+0 \) +swap \
-        -background none -layers merge +repage $shadow
-    # create shadow cutout
-    composite -compose Dst_Out -gravity center \
-        $LOCKBOX $shadow -alpha Set $shadow
-    # combine box and shadow
-    convert $shadow $LOCKBOX -geometry +20+20 -composite $LOCKBOX
-    [[ $shadow ]] && rm $shadow
+    magick -size 200x300 canvas:none \
+      -draw 'rectangle 0,0 200,300' xc:\#"$lockbox" \( +clone -background \#"$lockboxshadow" \
+      -shadow 100x10+0+0 \) +swap -background none -layers merge \
+      -insert 0 -gravity center \
+      -append -background none -gravity center -geometry +20+20 "$LOCKBOX"
 }
 
 # Delete and recreate path
@@ -235,7 +225,6 @@ update () {
             continue
         fi
 
-        echo "Resize and render images..."
         if [ "$span" = true ]; then
             # create one large image spanning multiple displays
             resize_and_render $IMG_PATH $DISP_CACHE $TOTAL_SIZE
@@ -264,18 +253,18 @@ update () {
     else
         echo "Creating multi-monitor images..."
         # or create canvas at the total resolution
-        convert -size $TOTAL_SIZE 'xc:blue' $LOCK_NORMAL
+        magick -size $TOTAL_SIZE 'xc:blue' $LOCK_NORMAL
         [[ $chk_dim ]] && cp $LOCK_NORMAL $LOCK_DIM
         [[ $chk_blur ]] && cp $LOCK_NORMAL $LOCK_BLUR
         [[ $chk_pixel ]] && cp $LOCK_NORMAL $LOCK_PIXEL
         [[ $chk_morph ]] && cp $LOCK_NORMAL $LOCK_MORPH
 
         # combine each display's image on canvas
-        convert $LOCK_NORMAL $PARAM_NORMAL $LOCK_NORMAL
-        [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_DIM $LOCK_DIM
-        [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
-        [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
-        [[ $chk_morph ]] && convert $LOCK_MORPH $PARAM_MORPH $LOCK_MORPH
+        magick $LOCK_NORMAL $PARAM_NORMAL $LOCK_NORMAL
+        [[ $chk_dim ]] && magick $LOCK_DIM $PARAM_DIM $LOCK_DIM
+        [[ $chk_blur ]] && magick $LOCK_BLUR $PARAM_BLUR $LOCK_BLUR
+        [[ $chk_pixel ]] && magick $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
+        [[ $chk_morph ]] && magick $LOCK_MORPH $PARAM_MORPH $LOCK_MORPH
     fi
 
     # create lock box and get positions
@@ -285,11 +274,11 @@ update () {
     done
     # combine lock boxes with each image
     echo "Drawing lock box..."
-    convert $LOCK_NORMAL $PARAM_BOX $LOCK_NORMAL
-    [[ $chk_dim ]] && convert $LOCK_DIM $PARAM_BOX $LOCK_DIM
-    [[ $chk_blur ]] && convert $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
-    [[ $chk_pixel ]] && convert $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
-    [[ $chk_morph ]] && convert $LOCK_MORPH $PARAM_BOX $LOCK_MORPH
+    magick $LOCK_NORMAL $PARAM_BOX $LOCK_NORMAL
+    [[ $chk_dim ]] && magick $LOCK_DIM $PARAM_BOX $LOCK_DIM
+    [[ $chk_blur ]] && magick $LOCK_BLUR $PARAM_BOX $LOCK_BLUR
+    [[ $chk_pixel ]] && magick $LOCK_PIXEL $PARAM_BOX $LOCK_PIXEL
+    [[ $chk_morph ]] && magick $LOCK_MORPH $PARAM_BOX $LOCK_MORPH
 
     [[ $LOCKBOX ]] && rm $LOCKBOX
 
