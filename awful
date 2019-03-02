@@ -315,11 +315,11 @@ lock() {
         --veriftext='Verifying...' --verifcolor="$textcolor" --verif-font="$font" --verifsize=16 \
         --noinputtext='' --locktext="Locking..." --lockfailedtext="Lock failed!" \
         --timestr="%H:%M:%S" --clock \
-        --timepos='ix+0:iy-120' --time-align 0 \
-        --timecolor="$timecolor" --time-font="$font" \
+        --timepos='ix+0:iy-125' --time-align 0 \
+        --timecolor="$timecolor" --time-font="$font" --timesize=24 \
         --datestr "%A, %m %Y" \
-        --datepos='ix+0:iy-100' --date-align 0 \
-        --datecolor="$datecolor" --date-font="$font" \
+        --datepos='ix+0:iy-105' --date-align 0 \
+        --datecolor="$datecolor" --date-font="$font" --datesize=12 \
         --greetertext="$greetertext" \
         --greeterpos='ix+0:iy+120' --greeter-align 0 \
         --greetercolor="$greetercolor" --greeter-font="$font" --greetersize=24 \
