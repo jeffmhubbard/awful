@@ -171,12 +171,21 @@ fx_morph() {
 
 # create lock box background
 create_lockbox () {
-    LOCKBOX=$CUR_DIR/rectangle.png
-    magick -size 200x300 canvas:none \
-      -draw 'rectangle 0,0 200,300' xc:\#"$lockbox" \( +clone -background \#"$lockboxshadow" \
-      -shadow 100x10+0+0 \) +swap -background none -layers merge \
-      -insert 0 -gravity center \
-      -append -background none -gravity center -geometry +20+20 "$LOCKBOX"
+    LOCKBOX=$CUR_DIR/.lockbox.png
+    local shadow=$CUR_DIR/.shadow.png
+    local mask=$CUR_DIR/.mask.png
+    
+    convert -size 200x300 xc:\#$lockboxshadow -fill none $mask
+    convert -size 200x300 xc:\#"$lockbox" -fill none $LOCKBOX
+    convert $mask \
+        \( -clone 0 -background \#$lockboxshadow -shadow 100x5+0+0 \) +swap \
+        -background none -layers merge +repage $shadow
+    composite -compose Dst_Out -gravity center \
+        $mask $shadow -alpha Set $shadow
+    convert $shadow $LOCKBOX -geometry +10+10 -composite $LOCKBOX
+    [[ $shadow ]] && rm $shadow
+    [[ $mask ]] && rm $mask
+
 }
 
 # Delete and recreate path
@@ -213,8 +222,8 @@ update () {
 
         # get positions to draw lock box
         if [[ $DISP_NUM -eq "$screen" ]] || [[ "$screen" -eq 0 ]]; then
-            DRAWX=$((${DISP_RESX} / 2 - $(logical_px 120)))
-            DRAWY=$((${DISP_RESY} / 2 - $(logical_px 170)))
+            DRAWX=$((${DISP_RESX} / 2 - $(logical_px 110)))
+            DRAWY=$((${DISP_RESY} / 2 - $(logical_px 160)))
             DRAWPOS+="+$(($DRAWX+$DISP_POSX))+$(($DRAWY+$DISP_POSY)) "
         fi
 
