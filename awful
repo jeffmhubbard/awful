@@ -6,9 +6,13 @@ VERSION=0.0.1
 ##
 
 # Defaults
-ringcolor=80808099
-insidecolor=80808099
-separatorcolor=80808099
+ringcolor=ffffff33
+ringverifcolor=00ffff99
+ringwrongcolor=ff000099
+insidecolor=e5e5e519
+insideverifcolor=e5e5e519
+insidewrongcolor=e5e5e519
+separatorcolor=00000000
 keyhlcolor=00ff0099
 bshlcolor=ffff0099
 verifcolor=00ffff99
@@ -26,6 +30,7 @@ font="sans-serif"
 screen=0
 span=false
 effects=(dim blur pixel morph)
+defaultfx=none
 dim=40
 blur=1
 pixel=1000
@@ -249,7 +254,7 @@ update () {
             PARAM_PIXEL="$PARAM_PIXEL $RES_PIXEL -geometry +$DISP_POSX+$DISP_POSY -composite "
             PARAM_MORPH="$PARAM_MORPH $RES_MORPH -geometry +$DISP_POSX+$DISP_POSY -composite "
         fi
-
+        CLEAN_LIST+=($DISP_CACHE)
     done
 
     purge_cache $CUR_DIR
@@ -277,6 +282,10 @@ update () {
         [[ $chk_pixel ]] && magick $LOCK_PIXEL $PARAM_PIXEL $LOCK_PIXEL
         [[ $chk_morph ]] && magick $LOCK_MORPH $PARAM_MORPH $LOCK_MORPH
     fi
+
+    for RMDIR in ${CLEAN_LIST[@]}; do
+        rm -r $RMDIR
+    done
 
     # create lock box and get positions
     create_lockbox
@@ -311,8 +320,8 @@ lock() {
         -i "$1" \
         --screen "$screen" "$indicator" \
         --indpos='x+w/2:y+h/2' --radius=75 --ring-width=25 --line-uses-inside \
-        --ringcolor=$ringcolor --ringvercolor=$ringcolor --ringwrongcolor=$ringcolor \
-        --insidecolor=$insidecolor --insidevercolor=$verifcolor --insidewrongcolor=$wrongcolor \
+        --ringcolor=$ringcolor --ringvercolor=$ringverifcolor --ringwrongcolor=$ringwrongcolor \
+        --insidecolor=$insidecolor --insidevercolor=$insideverifcolor --insidewrongcolor=$insidewrongcolor \
         --keyhlcolor=$keyhlcolor --bshlcolor=$bshlcolor --separatorcolor=$separatorcolor \
         --wrongtext='Access Denied' --wrongcolor="$textcolor" --wrong-font="$font" --wrongsize=16 \
         --veriftext='Verifying...' --verifcolor="$textcolor" --verif-font="$font" --verifsize=16 \
