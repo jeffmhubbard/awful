@@ -133,7 +133,8 @@ resize_and_render () {
 fx_resize() {
     eval magick "$1" \
         -resize "$resolution^" \
-         -gravity center \
+        -gravity center \
+        -extent "$resolution" \
         "$2"
 }
 
