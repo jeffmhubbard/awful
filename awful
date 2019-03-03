@@ -342,9 +342,10 @@ lockselect() {
     prelock
 
     local effect=$1
+
     # when no arg, try defaultfx
-    if [[ ! $effect =~ ${effects[*]} ]]; then
-        [[ $defaultfx ]] && effect=$defaultfx
+    if [[ $effect = '' ]] && [[ ! $defaultfx = '' ]]; then
+        effect=$defaultfx
     fi
 
     case "$effect" in
