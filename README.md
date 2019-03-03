@@ -14,6 +14,8 @@ for the indicator.
 - Less arguments, more config
 - Other awfulness
 
+![Imgur](https://i.imgur.com/y1cpYv7.png)
+
 ### Requirements
 - [i3lock-color](https://github.com/PandorasFox/i3lock-color) - i3lock fork with additional features (git)  
 - [imagemagick](https://www.imagemagick.org/script/index.php) - To apply effects to images  
