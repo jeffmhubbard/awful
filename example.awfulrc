@@ -40,6 +40,8 @@ span=false
 effects=(dim blur pixel morph)
 # default image effect
 defaultfx=normal
+# always show indicator ring
+showring=false
 # dim (default 40)
 dim=40
 # blur ammount (default 1)

@@ -21,6 +21,7 @@ layoutcolor=ffffff80
 greetertext='Welcome Back'
 lockbox=000000cc
 lockboxshadow=00000099
+showring=false
 font="sans-serif"
 screen=0
 span=false
@@ -304,9 +305,10 @@ prelock() {
 
 # Call i3lock
 lock() {
+    [[ $showring == "true" ]] && indicator="--indicator"
     i3lock \
         -i "$1" \
-        --screen "$screen" \
+        --screen "$screen" "$indicator" \
         --indpos='x+w/2:y+h/2' --radius=75 --ring-width=25 --line-uses-inside \
         --ringcolor=$ringcolor --ringvercolor=$ringcolor --ringwrongcolor=$ringcolor \
         --insidecolor=$insidecolor --insidevercolor=$verifcolor --insidewrongcolor=$wrongcolor \

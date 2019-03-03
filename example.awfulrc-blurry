@@ -40,6 +40,8 @@ span=true
 effects=(blur)
 #
 defaultfx=blur
+#
+showring=true
 # dim (default 40)
 dim=50
 # blur ammount (default 1)
