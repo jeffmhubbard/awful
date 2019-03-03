@@ -3,9 +3,9 @@
 # indicator ring color
 ringcolor=80808099
 # inside ring color
-insidecolor=80808033
+insidecolor=80808099
 # separator color
-separatorcolor=80808033
+separatorcolor=80808099
 # typing color
 keyhlcolor=00ff0099
 # backspace color
@@ -15,7 +15,7 @@ verifcolor=00ffff99
 # wrong inside color
 wrongcolor=ff000099
 # misc text color
-textcolor=00000099
+textcolor=ffffffff
 # time color
 timecolor=ffffffff
 # date color
@@ -37,12 +37,12 @@ screen=0
 # span multiple screens
 span=false
 # only apply these effects
-effects=(dim blur pixel)
+effects=(dim blur pixel morph)
+# default image effect
+defaultfx=normal
 # dim (default 40)
 dim=40
 # blur ammount (default 1)
 blur=1
-# pixel ammount (default 1000) *** BROKEN DON'T CHANGE ***
-pixel=1000
 
 # vim: set ft=cfg:
