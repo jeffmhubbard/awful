@@ -7,24 +7,24 @@ VERSION=0.0.1
 
 # Defaults
 ringcolor=80808099
-insidecolor=80808033
-separatorcolor=80808033
+insidecolor=80808099
+separatorcolor=80808099
 keyhlcolor=00ff0099
 bshlcolor=ffff0099
 verifcolor=00ffff99
 wrongcolor=ff000099
-textcolor=00000099
+textcolor=ffffffff
 timecolor=ffffffff
 datecolor=ffffff80
 greetercolor=ffffffff
 layoutcolor=ffffff80
 greetertext='Welcome Back'
 lockbox=000000cc
-lockboxshadow=00000080
+lockboxshadow=00000099
 font="sans-serif"
 screen=0
 span=false
-effects=(dim blur pixel)
+effects=(dim blur pixel morph)
 dim=40
 blur=1
 pixel=1000
@@ -307,7 +307,7 @@ lock() {
     i3lock \
         -i "$1" \
         --screen "$screen" \
-        --indpos='x+w/2:y+h/2' --radius=80 --ring-width=20 --line-uses-inside \
+        --indpos='x+w/2:y+h/2' --radius=75 --ring-width=25 --line-uses-inside \
         --ringcolor=$ringcolor --ringvercolor=$ringcolor --ringwrongcolor=$ringcolor \
         --insidecolor=$insidecolor --insidevercolor=$verifcolor --insidewrongcolor=$wrongcolor \
         --keyhlcolor=$keyhlcolor --bshlcolor=$bshlcolor --separatorcolor=$separatorcolor \
@@ -317,7 +317,7 @@ lock() {
         --timestr="%H:%M:%S" --clock \
         --timepos='ix+0:iy-125' --time-align 0 \
         --timecolor="$timecolor" --time-font="$font" --timesize=24 \
-        --datestr "%A, %m %Y" \
+        --datestr "%A, %b %e, %Y" \
         --datepos='ix+0:iy-105' --date-align 0 \
         --datecolor="$datecolor" --date-font="$font" --datesize=12 \
         --greetertext="$greetertext" \
@@ -340,7 +340,14 @@ postlock() {
 # Select lock screen effect
 lockselect() {
     prelock
-    case "$1" in
+
+    local effect=$1
+    # when no arg, try defaultfx
+    if [[ ! $effect =~ ${effects[*]} ]]; then
+        [[ $defaultfx ]] && effect=$defaultfx
+    fi
+
+    case "$effect" in
         dim)
             # dim effect
             lock "$LOCK_DIM"
@@ -379,7 +386,7 @@ usage() {
     echo
     echo "  -l --lock"
     echo "      Lock screen with optional effect"
-    echo "      $ awful -l dim"
+    echo "      $ awful -l EFFECT"
     echo
     echo "  -s --suspend"
     echo "      Lock screen and suspend system"
