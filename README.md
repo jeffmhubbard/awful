@@ -18,10 +18,10 @@ for the indicator.
 
 ### Requirements
 - [i3lock-color](https://github.com/PandorasFox/i3lock-color) - i3lock fork with additional features (git)  
-- [imagemagick](https://www.imagemagick.org/script/index.php) - To apply effects to images  
-- [xrandr](https://www.x.org/wiki/Projects/XRandR/) - Get display info  
-- [xdpyinfo](https://www.x.org/archive/X11R7.7/doc/man/man1/xdpyinfo.1.xhtml) - Get total resolution  
-- [xrdb](https://www.x.org/pub/X11R7.5/doc/man/man1/xrdb.1.html) - Use Xft.dpi 
+- [imagemagick](https://www.imagemagick.org/script/index.php) - Image effects  
+- [xrandr](https://www.x.org/wiki/Projects/XRandR/) - Display info  
+- [xdpyinfo](https://www.x.org/archive/X11R7.7/doc/man/man1/xdpyinfo.1.xhtml) - Total resolution  
+- [xrdb](https://www.x.org/pub/X11R7.5/doc/man/man1/xrdb.1.html) - Use Xft.dpi  
 - [bc](https://www.gnu.org/software/bc/) - Do math  
 
 ### Installation

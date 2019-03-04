@@ -1,11 +1,15 @@
 # awful config file
 
 # indicator ring color
-ringcolor=80808099
+ringcolor=ffffff33
+ringverifcolor=00ffff99
+ringwrongcolor=ff000099
 # inside ring color
-insidecolor=80808099
+insidecolor=e5e5e519
+insideverifcolor=e5e5e519
+insidewrongcolor=e5e5e519
 # separator color
-separatorcolor=80808099
+separatorcolor=00000000
 # typing color
 keyhlcolor=00ff0099
 # backspace color
@@ -25,9 +29,9 @@ greetercolor=ffffffff
 # keyboard layout color
 layoutcolor=ffffff80
 # lock box background
-lockbox=00000099
+lockbox=000000cc
 # lock box shadow
-lockboxshadow=00000080
+lockboxshadow=00000099
 # greeter message
 greetertext='Welcome Back'
 # font
@@ -38,13 +42,13 @@ screen=0
 span=false
 # only apply these effects
 effects=(dim blur pixel morph)
-# default image effect
-defaultfx=normal
+# default image effect, MUST be in effects list
+defaultfx=none
 # always show indicator ring
 showring=false
-# dim (default 40)
+# dim ammount (1-100)
 dim=40
-# blur ammount (default 1)
+# blur ammount (1-5)
 blur=1
 
 # vim: set ft=cfg:
