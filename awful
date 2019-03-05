@@ -49,6 +49,7 @@ LOCK_DIM="$CUR_DIR/dim.png"
 LOCK_BLUR="$CUR_DIR/blur.png"
 LOCK_PIXEL="$CUR_DIR/pixel.png"
 LOCK_MORPH="$CUR_DIR/morph.png"
+LOCK_CAPTURE="$CUR_DIR/capture.png"
 
 
 # Get image path from argument or random image from path
@@ -61,6 +62,16 @@ get_image_path() {
     dir=("$path"/*)
     dir="${dir[RANDOM % ${#dir[@]}]}"
     get_image_path "$dir"
+}
+
+get_screen_capture() {
+    local resolution=$1
+    ffmpeg -loglevel -8 -y \
+        -f x11grab -framerate 1 \
+        -video_size $resolution \
+        -i :0.0 -vframes 1 \
+        -vf "boxblur=$blur:1" \
+        $LOCK_CAPTURE
 }
 
 # Get list of displays
@@ -305,6 +316,40 @@ update () {
     echo "Done"
 }
 
+capture () {
+
+    get_display_list
+    get_total_size
+    echo "Found ${#DISP_LIST[@]} display(s) @ $TOTAL_SIZE"
+
+    get_screen_capture $TOTAL_SIZE
+
+    # get info for each display
+    for DISP in "${DISP_LIST[@]}"; do
+        DISP_GEO=($(cut -d" " -f3 <<<"${DISP}"))
+        DISP_POSX=$(cut -d"+" -f2 <<<"${DISP_GEO}")
+        DISP_POSY=$(cut -d"+" -f3 <<<"${DISP_GEO}")
+        DISP_RESX="$(cut -d"x" -f1 <<<"${DISP_GEO%%+*}")"
+        DISP_RESY="$(cut -d"x" -f2 <<<"${DISP_GEO%%+*}")"
+
+        # get positions to draw lock box
+        if [[ $DISP_NUM -eq "$screen" ]] || [[ "$screen" -eq 0 ]]; then
+            DRAWX=$((${DISP_RESX} / 2 - $(logical_px 110)))
+            DRAWY=$((${DISP_RESY} / 2 - $(logical_px 160)))
+            DRAWPOS+="+$(($DRAWX+$DISP_POSX))+$(($DRAWY+$DISP_POSY)) "
+        fi
+    done
+
+    # create lock box and get positions
+    create_lockbox
+
+    for POS in ${DRAWPOS[@]}; do
+        PARAM_BOX="$PARAM_BOX $LOCKBOX -geometry $POS -composite "
+    done
+    magick $LOCK_CAPTURE $PARAM_BOX $LOCK_CAPTURE
+
+}
+
 # Run before locking
 prelock() {
     # pause dunst
@@ -376,6 +421,11 @@ lockselect() {
         morph)
             # morph effect
             lock "$LOCK_MORPH"
+            ;;
+        capture)
+            # screen capture
+            capture
+            lock "$LOCK_CAPTURE"
             ;;
         *)
             # normal
