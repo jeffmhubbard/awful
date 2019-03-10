@@ -11,9 +11,9 @@ VERSION='0.0.0-alpha'
 
 # Paths
 USER_CONF="$HOME/.config/awful/config"
-CACHE_DIR=$HOME/.cache/awful
-IMG_CACHE=$CACHE_DIR/lockscreen.png
-IMG_CAP=$CACHE_DIR/capture.png
+CACHE_DIR="$HOME/.cache/awful"
+IMG_CACHE="$CACHE_DIR/lockscreen.png"
+IMG_CAP="$CACHE_DIR/capture.png"
 
 # Defaults
 barcolor=ffffff19
@@ -27,7 +27,7 @@ font="sans-serif"
 textsize=64
 subtextsize=24
 greetertext="Welcome"
-timetext="%l:%M %p"
+timetext="%l:%M%p"
 datetext="%A, %b %e, %Y"
 mesgcolor=ffffffff
 mesgfont="sans-serif"
@@ -38,8 +38,8 @@ lockmesg="Locking..."
 failedmesg="Lock Failed"
 inputmesg="Enter Password..."
 stepper=10
-screen=1
-span=true
+screen=0
+span=false
 
 # Load config file
 if [ -e $USER_CONF ]; then
@@ -152,11 +152,9 @@ lock () {
 }
 
 prelock() {
-    notify-send "DUNST_COMMAND_PAUSE"
-    #pkill -u "$USER" -USR1 dunst
-    #if [ ! -z "$(pidof dunst)" ]; then
-    #    pkill -u "$USER" -USR1 dunst
-    #fi
+    if [ ! -z "$(pidof dunst)" ]; then
+        pkill -u "$USER" -USR1 dunst
+    fi
 }
 
 # Wrap i3lock
@@ -222,11 +220,9 @@ i3lock_wrapper () {
 
 # Run after unlocking
 postlock() {
-    notify-send "DUNST_COMMAND_RESUME"
-    #pkill -u "$USER" -USR2 dunst
-    #if [ ! -z "$(pidof dunst)" ] ; then
-    #    pkill -u "$USER" -USR2 dunst
-    #fi
+    if [ ! -z "$(pidof dunst)" ] ; then
+        pkill -u "$USER" -USR2 dunst
+    fi
 }
 
 # Help message

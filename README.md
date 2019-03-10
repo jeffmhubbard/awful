@@ -4,7 +4,7 @@ Awful lock screen
 ### Features
 - Other awfulness
 
-![Imgur](https://i.imgur.com/y1cpYv7.png)
+![Imgur](https://i.imgur.com/)
 
 ### Requirements
 - [i3lock-color](https://github.com/PandorasFox/i3lock-color) - i3lock fork with additional features (git)  
