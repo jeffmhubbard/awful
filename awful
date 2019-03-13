@@ -90,17 +90,70 @@ cache_x11grab () {
         "$IMG_CAP"
 }
 
-# Cache wallpaper with effects
+# Cache image with scaled to resolution with effects
 cache_wallpaper () {
-    echo "Caching $(basename $1)"
-    echo "Rendering blur and vignette..."
-    local resx="${TOTAL_SIZE%%x*}"
-    local resy="${TOTAL_SIZE##*x}"
+    local userimg=$1
+    local resx="${2%%x*}"
+    local resy="${2##*x}"
+    local out=$3
     local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
     ffmpeg -loglevel -8 -y \
-        -i "$1" \
+        -i "$userimg" \
         -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
+        "$out"
+}
+
+# Compose lockscreen image from per-resolution versions
+compose_wallpaper () {
+    local userimg=$1
+    local canvas="${CACHE_DIR}/canvas.png"
+    local cleanup=( ${canvas} )
+    local dcnt=(${#DISP_LIST[@]} + 1)
+
+    make_canvas $canvas
+
+    for DISP in "${DISP_LIST[@]}"; do
+        disp=( $DISP )
+
+        num="${disp[0]}"
+        name="${disp[1]}"
+        geo="${disp[2]##* }"
+        res="${geo%%+*}"
+        pos="${geo#*+}"
+        url="${CACHE_DIR}/${name}.png"
+
+        cache_wallpaper $userimg $res $url
+
+        fileargs="$fileargs -i $url"
+        if [ $dcnt -gt $num ]; then
+            filterargs="$filterargs[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
+        else
+            filterargs="$filterargs[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
+        fi
+
+        cleanup+=( ${url} )
+    done
+
+    # compose lockscreen image
+    echo "Creating multi-monitor image..."
+    ffmpeg -i ${canvas} ${fileargs} \
+        -loglevel -8 -y \
+        -filter_complex "[0:v]${filterargs}" \
+        -map [output]:v \
+        -pix_fmt rgb24 \
         "$IMG_CACHE"
+
+    rm ${cleanup[@]}
+}
+
+# make blue canvas
+make_canvas () {
+    local out=$1
+    ffmpeg \
+        -loglevel -8 -y \
+        -f lavfi \
+        -i "color=blue:$TOTAL_SIZE" \
+        $out
 }
 
 # Update cached image
@@ -114,7 +167,12 @@ update () {
     get_total_size
     [[ $DNUM -gt 1 ]] && echo "Using $TOTAL_SIZE resolution!"
 
-    cache_wallpaper "$1"
+    if [ "$span" = true ] || [ $DNUM = 1 ]; then
+        cache_wallpaper "$1" $TOTAL_SIZE $IMG_CACHE
+    else
+        compose_wallpaper "$1"
+    fi
+
     [[ -e $IMG_CACHE ]] && echo "Complete!"
 }
 
