@@ -42,12 +42,12 @@ screen=0
 span=false
 
 # Load config file
-if [ -e $USER_CONF ]; then
+if [ -e "$USER_CONF" ]; then
     source "$USER_CONF"
 fi
 
 # Create cache directory
-mkdir -p $CACHE_DIR
+mkdir -p "$CACHE_DIR"
 
 # Get list of displays
 get_display_list () {
@@ -55,7 +55,7 @@ get_display_list () {
     mapfile -t ACTIVE < <( xrandr --listactivemonitors )
     for DISP in "${ACTIVE[@]:1}"; do
         (( NUM++ ))
-        DISP=$(echo $DISP | sed -r 's/\/[0-9]*//g')
+        DISP=$(echo "$DISP" | sed -r 's/\/[0-9]*//g')
         IFS=' ' read -r -a INFO <<< "$DISP"
         DISP_LIST+=("$NUM ${INFO[3]} ${INFO[2]}")
     done
@@ -74,17 +74,17 @@ get_image_path() {
         return
     fi
     dir=("$path"/*)
-    dir="${dir[RANDOM % ${#dir[@]}]}"
-    get_image_path "$dir"
+    path="${dir[RANDOM % ${#dir[@]}]}"
+    get_image_path "$path"
 }
 
 # Cache screen capture with effects
-cache_x11grab () {
+cache_capture () {
     echo "Caching screen capture"
     echo "Rendering blur and vignette..."
     ffmpeg -loglevel -8 -y \
         -f x11grab -framerate 1 \
-        -video_size $TOTAL_SIZE \
+        -video_size "$TOTAL_SIZE" \
         -i :0.0 -vframes 1 \
         -vf "boxblur=3:1, vignette=angle=PI/4" \
         "$IMG_CAP"
@@ -92,105 +92,128 @@ cache_x11grab () {
 
 # Cache image with scaled to resolution with effects
 cache_wallpaper () {
-    local userimg=$1
+    local user_image=$1
     local resx="${2%%x*}"
     local resy="${2##*x}"
     local out=$3
     local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
     ffmpeg -loglevel -8 -y \
-        -i "$userimg" \
+        -i "$user_image" \
         -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
         "$out"
 }
 
 # Compose lockscreen image from per-resolution versions
 compose_wallpaper () {
-    local userimg=$1
+    local user_image=$1
     local canvas="${CACHE_DIR}/canvas.png"
-    local cleanup=( ${canvas} )
+    local clean_tmp=( "$canvas" )
     local dcnt=(${#DISP_LIST[@]} + 1)
 
-    make_canvas $canvas
+    make_canvas "$canvas"
 
-    for DISP in "${DISP_LIST[@]}"; do
-        disp=( $DISP )
+    for DITEM in "${DISP_LIST[@]}"; do
+        disp=( $DITEM )
 
+        # get display info
         num="${disp[0]}"
         name="${disp[1]}"
         geo="${disp[2]##* }"
         res="${geo%%+*}"
         pos="${geo#*+}"
-        url="${CACHE_DIR}/${name}.png"
+        fpath="${CACHE_DIR}/${name}.png"
 
-        cache_wallpaper $userimg $res $url
+        # cache wallpaper
+        cache_wallpaper "$user_image" "$res" "$fpath"
 
-        fileargs="$fileargs -i $url"
-        if [ $dcnt -gt $num ]; then
-            filterargs="$filterargs[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
+        # build input file parameters
+        file_args="$file_args -i $fpath"
+
+        # build filter_complex parameters
+        if [[ "$dcnt" -gt $num ]]; then
+            filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
         else
-            filterargs="$filterargs[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
+            filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
         fi
 
-        cleanup+=( ${url} )
+        # add to clean up
+        clean_tmp+=( "$fpath" )
     done
 
     # compose lockscreen image
     echo "Creating multi-monitor image..."
-    ffmpeg -i ${canvas} ${fileargs} \
+    ffmpeg -i "$canvas" "$file_args" \
         -loglevel -8 -y \
-        -filter_complex "[0:v]${filterargs}" \
+        -filter_complex "[0:v]${filter_args}" \
         -map [output]:v \
         -pix_fmt rgb24 \
         "$IMG_CACHE"
 
-    rm ${cleanup[@]}
+    # clean temp files
+    rm ${clean_tmp[@]}
 }
 
-# make blue canvas
+# Make blue canvas for multi-monitor image
 make_canvas () {
     local out=$1
     ffmpeg \
         -loglevel -8 -y \
         -f lavfi \
         -i "color=blue:$TOTAL_SIZE" \
-        $out
+        "$out"
 }
 
 # Update cached image
+# -u, --update PATTH
 update () {
+    local user_image=$1
+
+    # purge previous image
     [[ -e $IMG_CACHE ]] && rm $IMG_CACHE
 
+    # get display list and count
     get_display_list
     DNUM=${#DISP_LIST[*]}
     [[ $DNUM -gt 1 ]] && echo "$DNUM displays detected!"
 
+    # get total resolution
     get_total_size
     [[ $DNUM -gt 1 ]] && echo "Using $TOTAL_SIZE resolution!"
 
+    # if spanning or only 1 display, just call cache_wallpaper
+    # if multi-monitor detected, use compose_wallpaper to
+    # make our image
     if [ "$span" = true ] || [ $DNUM = 1 ]; then
-        cache_wallpaper "$1" $TOTAL_SIZE $IMG_CACHE
+        cache_wallpaper "$user_image" "$TOTAL_SIZE" "$IMG_CACHE"
     else
-        compose_wallpaper "$1"
+        compose_wallpaper "$user_image"
     fi
 
     [[ -e $IMG_CACHE ]] && echo "Complete!"
 }
 
 # Capture screen shot
+# -c, --capture
 capture () {
-    [[ -e $IMG_CAP ]] && rm $IMG_CAP
 
-    cache_x11grab
+    # purge previous image
+    [[ -e $IMG_CAP ]] && rm "$IMG_CAP"
+
+    # cache new screen capture
+    cache_capture
     [[ -e $IMG_CAP ]] && echo "Complete!"
 }
 
 # Lock screen
+# -l, --lock
 lock () {
 
+    # get display list and count
     get_display_list
     DNUM=${#DISP_LIST[*]}
     [[ $DNUM -gt 1 ]] && echo "$DNUM displays detected!"
 
+    # get total resolution
     get_total_size
     [[ $DNUM -gt 1 ]] && echo "Using $TOTAL_SIZE resolution!"
 
@@ -209,10 +232,12 @@ lock () {
     postlock
 }
 
+# Run before locking screen
 prelock() {
-    if [ ! -z "$(pidof dunst)" ]; then
-        pkill -u "$USER" -USR1 dunst
-    fi
+    return
+#    if [ ! -z "$(pidof dunst)" ]; then
+#        pkill -u "$USER" -USR1 dunst
+#    fi
 }
 
 # Wrap i3lock
@@ -232,7 +257,7 @@ i3lock_wrapper () {
         local scrheight=${scrres##*x}
     fi
 
-    # allow position time\date on second display
+    # if spanning, time-date position from total resolution
     if [[ $span = true ]]; then
         rightpos=$totalx
     else
@@ -278,9 +303,10 @@ i3lock_wrapper () {
 
 # Run after unlocking
 postlock() {
-    if [ ! -z "$(pidof dunst)" ] ; then
-        pkill -u "$USER" -USR2 dunst
-    fi
+    return
+#    if [ ! -z "$(pidof dunst)" ] ; then
+#        pkill -u "$USER" -USR2 dunst
+#    fi
 }
 
 # Help message
