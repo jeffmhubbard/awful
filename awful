@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
-#
 # Awful Lock Screen
 # Blur + Vignette Lock Screen using i3lock-color and FFmpeg
 #
 # extbin: ffmpeg i3lock xrandr xdpyinfo
 
 APPNAME='awful'
-VERSION='0.0.0-alpha'
+VERSION='0.1'
 
 # Paths
 USER_CONF="$HOME/.config/awful/config"
@@ -42,22 +41,22 @@ screen=0
 span=false
 
 # Load config file
-if [ -e $USER_CONF ]; then
+if [ -e "$USER_CONF" ]; then
     source "$USER_CONF"
 fi
 
 # Create cache directory
-mkdir -p $CACHE_DIR
+mkdir -p "$CACHE_DIR"
 
 # Get list of displays
 get_display_list () {
-    local NUM=0
-    mapfile -t ACTIVE < <( xrandr --listactivemonitors )
-    for DISP in "${ACTIVE[@]:1}"; do
-        (( NUM++ ))
-        DISP=$(echo $DISP | sed -r 's/\/[0-9]*//g')
-        IFS=' ' read -r -a INFO <<< "$DISP"
-        DISP_LIST+=("$NUM ${INFO[3]} ${INFO[2]}")
+    local num=0
+    mapfile -t active < <( xrandr --listactivemonitors )
+    for monitor in "${active[@]:1}"; do
+        (( num++ ))
+        local monitor=$(echo $monitor | sed -r 's/\/[0-9]*//g')
+        local info=( $monitor )
+        DISP_LIST+=("$num ${info[3]} ${info[2]}")
     done
 }
 
@@ -73,69 +72,70 @@ get_image_path() {
         IMG_CACHE="$path"
         return
     fi
-    dir=("$path"/*)
+    local dir=("$path"/*)
     dir="${dir[RANDOM % ${#dir[@]}]}"
     get_image_path "$dir"
 }
 
-# Cache screen capture with effects
-cache_capture () {
-    echo "Caching screen capture"
-    echo "Rendering blur and vignette..."
-    ffmpeg -loglevel -8 -y \
-        -f x11grab -framerate 1 \
-        -video_size $TOTAL_SIZE \
-        -i :0.0 -vframes 1 \
-        -vf "boxblur=3:1, vignette=angle=PI/4" \
-        "$IMG_CAP"
-}
-
 # Cache image with scaled to resolution with effects
-cache_wallpaper () {
-    local userimg=$1
+cache_image () {
+    local user_img=$1
     local resx="${2%%x*}"
     local resy="${2##*x}"
     local out=$3
     local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
     ffmpeg -loglevel -8 -y \
-        -i "$userimg" \
+        -i "$user_img" \
         -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
+        "$out"
+    echo "Caching $(basename "$user_img") @ ${resx}x${resy}"
+}
+
+# make blue canvas
+make_canvas () {
+    local out=$1
+    echo "Creating canvas @ $TOTAL_SIZE..."
+    ffmpeg \
+        -loglevel -8 -y \
+        -f lavfi \
+        -i "color=blue:$TOTAL_SIZE" \
         "$out"
 }
 
 # Compose lockscreen image from per-resolution versions
-compose_wallpaper () {
-    local userimg=$1
+compose_image () {
+    local user_img=$1
     local canvas="${CACHE_DIR}/canvas.png"
     local clean_tmp=( ${canvas} )
-    local dcnt=(${#DISP_LIST[@]} + 1)
+    local dcnt=( ${#DISP_LIST[*]} )
 
-    make_canvas $canvas
+    make_canvas "$canvas"
 
     for DISP in "${DISP_LIST[@]}"; do
         disp=( $DISP )
 
-        num="${disp[0]}"
-        name="${disp[1]}"
-        geo="${disp[2]##* }"
-        res="${geo%%+*}"
-        pos="${geo#*+}"
-        fpath="${CACHE_DIR}/${name}.png"
+        local num="${disp[0]}"
+        local name="${disp[1]}"
+        local geo="${disp[2]##* }"
+        local res="${geo%%+*}"
+        local pos="${geo#*+}"
+        local tmp_img="${CACHE_DIR}/${name}.png"
 
-        cache_wallpaper $userimg $res $fpath
+        cache_image "$user_img" "$res" "$tmp_img"
 
-        file_args="$file_args -i $fpath"
-        if [ $dcnt -gt $num ]; then
+        file_args="$file_args -i $tmp_img"
+        # shellcheck disable=SC1087
+        if [ "${dcnt[*]}" -gt "$num" ]; then
             filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
         else
             filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
         fi
 
-        clean_tmp+=( ${fpath} )
+        clean_tmp+=( ${tmp_img} )
     done
 
     # compose lockscreen image
-    echo "Creating multi-monitor image..."
+    echo "Merging temp files..."
     ffmpeg -i ${canvas} ${file_args} \
         -loglevel -8 -y \
         -filter_complex "[0:v]${filter_args}" \
@@ -143,145 +143,150 @@ compose_wallpaper () {
         -pix_fmt rgb24 \
         "$IMG_CACHE"
 
-    rm ${clean_tmp[@]}
-}
-
-# make blue canvas
-make_canvas () {
-    local out=$1
-    ffmpeg \
-        -loglevel -8 -y \
-        -f lavfi \
-        -i "color=blue:$TOTAL_SIZE" \
-        $out
+    echo "Cleaning up..."
+    rm ${clean_tmp[*]}
 }
 
 # Update cached image
 update () {
+    echo "Updating cache..."
+    local img_path=$1
     # purge previous image
-    [[ -e $IMG_CACHE ]] && rm $IMG_CACHE
+    [[ -e $IMG_CACHE ]] && rm "$IMG_CACHE"
 
     get_display_list
-    DNUM=${#DISP_LIST[*]}
-    [[ $DNUM -gt 1 ]] && echo "$DNUM displays detected!"
-
     get_total_size
-    [[ $DNUM -gt 1 ]] && echo "Using $TOTAL_SIZE resolution!"
+    DNUM=${#DISP_LIST[*]}
 
-    if [ "$span" = true ] || [ $DNUM = 1 ]; then
-        cache_wallpaper "$1" $TOTAL_SIZE $IMG_CACHE
+    echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+
+    if [ "$span" = true ] || [ "$DNUM" = 1 ]; then
+        cache_image "$img_path" "$TOTAL_SIZE" "$IMG_CACHE"
     else
-        compose_wallpaper "$1"
+        compose_image "$img_path"
     fi
 
-    [[ -e $IMG_CACHE ]] && echo "Complete!"
+    [[ -e $IMG_CACHE ]] && echo "Done!"
+}
+
+# Cache screen capture with effects
+cache_capture () {
+    ffmpeg -loglevel -8 -y \
+        -f x11grab -framerate 1 \
+        -video_size "$TOTAL_SIZE" \
+        -i :0.0 -vframes 1 \
+        -vf "boxblur=3:1, vignette=angle=PI/4" \
+        "$IMG_CAP"
+    echo "Caching screen capture..."
 }
 
 # Capture screen shot
 capture () {
-    [[ -e $IMG_CAP ]] && rm $IMG_CAP
-
     cache_capture
-    [[ -e $IMG_CAP ]] && echo "Complete!"
-}
-
-# Lock screen
-lock () {
-
-    get_display_list
-    DNUM=${#DISP_LIST[*]}
-    [[ $DNUM -gt 1 ]] && echo "$DNUM displays detected!"
-
-    get_total_size
-    [[ $DNUM -gt 1 ]] && echo "Using $TOTAL_SIZE resolution!"
-
-    prelock
-    case "$1" in
-        1)
-            # use cached wallpaper
-            i3lock_wrapper "$IMG_CACHE"
-            ;;
-        2)
-            # use screen capture
-            capture
-            i3lock_wrapper "$IMG_CAP"
-            ;;
-    esac
-    postlock
+    [[ -e $IMG_CAP ]] && echo "Done!"
 }
 
 prelock() {
-    if [ ! -z "$(pidof dunst)" ]; then
+    # pause dunst
+    if [ -n "$(pidof dunst)" ]; then
         pkill -u "$USER" -USR1 dunst
     fi
 }
 
+# Run after unlocking
+postlock() {
+    # remove capture
+    [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
+    # unpause dunst
+    if [ -n "$(pidof dunst)" ] ; then
+        pkill -u "$USER" -USR2 dunst
+    fi
+}
+
 # Wrap i3lock
-i3lock_wrapper () {
+lock () {
     echo "Locking..."
     local LOCK_IMG=$1
 
     local totalx="${TOTAL_SIZE%%x*}"
     local totaly="${TOTAL_SIZE##*x}"
     if [ $screen -lt 1 ]; then
-        local scrwidth=$(($totalx/$DNUM))
-        local scrheight=$(($totaly))
+        local width=$((totalx/DNUM))
+        local height=$((totaly))
     else
-        local scrgeo=${DISP_LIST[$(($screen-1))]##* }
-        local scrres=${scrgeo%%+*}
-        local scrwidth=${scrres%%x*}
-        local scrheight=${scrres##*x}
+        local geo=${DISP_LIST[$((screen-1))]##* }
+        local res=${geo%%+*}
+        local width=${res%%x*}
+        local height=${res##*x}
     fi
 
     # allow position time\date on second display
     if [[ $span = true ]]; then
         rightpos=$totalx
     else
-        rightpos=$scrwidth
+        rightpos=$width
     fi
+
+    prelock
 
     i3lock \
         --screen "$screen" \
         --image="$LOCK_IMG" \
         --bar-indicator \
-        --bar-position=$scrheight --bar-direction 1 \
-        --bar-width $scrwidth --bar-orientation=horizontal \
-        --bar-max-height=25 \
+        --bar-position="$height" --bar-direction 1 \
+        --bar-width "$width" --bar-orientation=horizontal \
+        --bar-max-height=28 \
         --bar-step="$stepper" --bar-periodic-step="$stepper"*2 \
         --bar-color="$barcolor" \
         --keyhlcolor="$typingcolor" --bshlcolor="$deletecolor" \
         --ringvercolor="$authcolor" --ringwrongcolor="$errorcolor" \
         --timestr="$timetext" --force-clock \
-        --timepos x+$rightpos-30:$scrheight-80 --time-align 2 \
+        --timepos x+"$rightpos"-30:"$height"-80 --time-align 2 \
         --timecolor="$textcolor" --time-font="$font" --timesize="$textsize" \
         --datestr="$datetext" \
-        --datepos x+$rightpos-30:$scrheight-45 --date-align 2 \
+        --datepos x+"$rightpos"-30:"$height"-45 --date-align 2 \
         --datecolor="$subtextcolor" --date-font="$font" --datesize="$subtextsize" \
         --greetertext="$greetertext" \
-        --greeterpos x+30:$scrheight-80 --greeter-align 1 \
+        --greeterpos x+30:"$height"-80 --greeter-align 1 \
         --greetercolor="$textcolor" --greeter-font="$font" --greetersize="$textsize" \
         --keylayout 0 \
-        --layoutpos x+30:$scrheight-45 --layout-align 1 \
+        --layoutpos x+30:"$height"-45 --layout-align 1 \
         --layoutcolor="$subtextcolor" --layout-font="$font" --layoutsize="$subtextsize" \
         --veriftext="$authmesg" \
-        --verifpos x+10:$scrheight-6 --verif-align 1 \
+        --verifpos x+10:"$height"-6 --verif-align 1 \
         --verifcolor="$mesgcolor" --verif-font="$mesgfont" --verifsize="$mesgsize" \
         --wrongtext="$errormesg" \
-        --wrongpos x+10:$scrheight-6 --wrong-align 1 \
+        --wrongpos x+10:"$height"-6 --wrong-align 1 \
         --wrongcolor="$mesgcolor" --wrong-font="$mesgfont" --wrongsize="$mesgsize" \
-        --modifpos x+$scrwidth-10:$scrheight-6 --modif-align 2 \
-        --statuspos x+10:$scrheight-6 \
+        --modifpos x+"$width"-10:"$height"-6 --modif-align 2 \
+        --statuspos x+10:"$height"-6 \
         --locktext="$lockmesg" --lockfailedtext="$failedmesg" \
         --noinputtext="$inputmesg" \
         --show-failed-attempts --ignore-empty-password \
-        --redraw-thread "$lockargs"
+        --redraw-thread ${lockargs}
+
+    postlock
 }
 
-# Run after unlocking
-postlock() {
-    if [ ! -z "$(pidof dunst)" ] ; then
-        pkill -u "$USER" -USR2 dunst
-    fi
+# Lock screen
+lock_select () {
+    get_display_list
+    get_total_size
+    DNUM=${#DISP_LIST[*]}
+
+    echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+
+    case "$1" in
+        lock)
+            # use cached wallpaper
+            lock "$IMG_CACHE"
+            ;;
+        capture)
+            # use screen capture
+            capture
+            lock "$IMG_CAP"
+            ;;
+    esac
 }
 
 # Help message
@@ -324,11 +329,11 @@ for arg in "$@"; do
             ;&
         -l | --lock)
             runlock=true
-            [[ $runsuspend ]] || lockargs="$lockargs -n"
+            [[ $runsuspend ]] || lockargs="$lockargs --nofork"
             ;;
         -c | --capture)
             runcap=true
-            [[ $runsuspend ]] || lockargs="$lockargs -n"
+            [[ $runsuspend ]] || lockargs="$lockargs --nofork"
             ;;
         -u | --update)
             runupdate=true
@@ -347,10 +352,10 @@ done
 
 [[ $runupdate ]] && update "$argpath"
 
-[[ $runlock ]] && lock 1 && \
+[[ $runlock ]] && lock_select lock && \
     { [[ $runsuspend ]] && systemctl suspend; }
 
-[[ $runcap ]] && lock 2 && \
+[[ $runcap ]] && lock_select capture && \
     { [[ $runsuspend ]] && systemctl suspend; }
 
 
