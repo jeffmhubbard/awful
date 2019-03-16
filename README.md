@@ -4,11 +4,13 @@ Awful lock screen
 ### Features
 - Other awfulness
 
-![Imgur](https://i.imgur.com/)
+![Lock](https://i.imgur.com/t7Qwq7w.png)
+
+![Capture](https://i.imgur.com/0LoVkLn.png)
 
 ### Requirements
 - [i3lock-color](https://github.com/PandorasFox/i3lock-color) - i3lock fork with additional features (git)  
-- [ffmpeg](https://www.ffmpeg.org/) - Screen capture  
+- [ffmpeg](https://www.ffmpeg.org/) - Image effects and screen capture  
 - [xrandr](https://www.x.org/wiki/Projects/XRandR/) - Display info  
 - [xdpyinfo](https://www.x.org/archive/X11R7.7/doc/man/man1/xdpyinfo.1.xhtml) - Total resolution  
 
