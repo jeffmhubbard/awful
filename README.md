@@ -21,41 +21,39 @@ cd awful
 sudo install -Dm 755 awful /usr/bin/awful
 ```
 
-##### For suspend with systemd
-```sh
-sudo install -Dm 644 awful@.service /usr/lib/systemd/system/awful@.service
-sudo systemctl daemon-reload
-sudo systemctl enable awful@$USER.service
-```
-
 ### Configuration
 Copy the example config to `~/.config/awful/config`. Edit.  
 
 ### Usage
 Update image cache:  
-```sh
+```
 awful --update PATH
 ```  
 PATH to wallpaper image.  
 
 Lock screen:  
-```sh
+```
 awful --lock
 ```
 
 Capture screen and lock:  
-```sh
+```
 awful --capture
 ```
 
 Lock and suspend:  
-```sh
+```
 awful --suspend
 ```
-See above.  
 
 Additional arguments:  
-```sh
+```
 awful -l -- --indicator
 ```
 
+### Tips
+Use `xss-lock`  
+```
+xset s 600 180 &
+xss-lock -l -- awful --lock &
+```  
