@@ -49,19 +49,19 @@ fi
 mkdir -p "$CACHE_DIR"
 
 # Get list of displays
-get_display_list () {
+get_display_list() {
     local num=0
-    mapfile -t active < <( xrandr --listactivemonitors )
+    mapfile -t active < <(xrandr --listactivemonitors)
     for monitor in "${active[@]:1}"; do
-        (( num++ ))
+        ((num++))
         local monitor=$(echo $monitor | sed -r 's/\/[0-9]*//g')
-        local info=( $monitor )
+        local info=($monitor)
         DISP_LIST+=("$num ${info[3]} ${info[2]}")
     done
 }
 
 # Get total combined display resolution
-get_total_size () {
+get_total_size() {
     TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
 }
 
@@ -78,7 +78,7 @@ get_image_path() {
 }
 
 # Cache image with scaled to resolution with effects
-cache_image () {
+cache_image() {
     local user_img=$1
     local resx="${2%%x*}"
     local resy="${2##*x}"
@@ -92,7 +92,7 @@ cache_image () {
 }
 
 # make blue canvas
-make_canvas () {
+make_canvas() {
     local out=$1
     echo "Creating canvas @ $TOTAL_SIZE..."
     ffmpeg \
@@ -103,16 +103,16 @@ make_canvas () {
 }
 
 # Compose lockscreen image from per-resolution versions
-compose_image () {
+compose_image() {
     local user_img=$1
     local canvas="${CACHE_DIR}/canvas.png"
-    local clean_tmp=( ${canvas} )
-    local dcnt=( ${#DISP_LIST[*]} )
+    local clean_tmp=(${canvas})
+    local dcnt=(${#DISP_LIST[*]})
 
     make_canvas "$canvas"
 
     for DISP in "${DISP_LIST[@]}"; do
-        disp=( $DISP )
+        disp=($DISP)
 
         local num="${disp[0]}"
         local name="${disp[1]}"
@@ -124,14 +124,13 @@ compose_image () {
         cache_image "$user_img" "$res" "$tmp_img"
 
         file_args="$file_args -i $tmp_img"
-        # shellcheck disable=SC1087
         if [ "${dcnt[*]}" -gt "$num" ]; then
             filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
         else
             filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
         fi
 
-        clean_tmp+=( ${tmp_img} )
+        clean_tmp+=(${tmp_img})
     done
 
     # compose lockscreen image
@@ -148,7 +147,7 @@ compose_image () {
 }
 
 # Update cached image
-update () {
+update() {
     echo "Updating cache..."
     local img_path=$1
     # purge previous image
@@ -170,7 +169,7 @@ update () {
 }
 
 # Cache screen capture with effects
-cache_capture () {
+cache_capture() {
     ffmpeg -loglevel -8 -y \
         -f x11grab -framerate 1 \
         -video_size "$TOTAL_SIZE" \
@@ -181,7 +180,7 @@ cache_capture () {
 }
 
 # Capture screen shot
-capture () {
+capture() {
     cache_capture
     [[ -e $IMG_CAP ]] && echo "Done!"
 }
@@ -198,30 +197,30 @@ postlock() {
     # remove capture
     [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
     # unpause dunst
-    if [ -n "$(pidof dunst)" ] ; then
+    if [ -n "$(pidof dunst)" ]; then
         pkill -u "$USER" -USR2 dunst
     fi
 }
 
 # Wrap i3lock
-lock () {
+lock() {
     echo "Locking..."
     local LOCK_IMG=$1
 
     local totalx="${TOTAL_SIZE%%x*}"
     local totaly="${TOTAL_SIZE##*x}"
     if [ $screen -lt 1 ]; then
-        local width=$((totalx/DNUM))
+        local width=$((totalx / DNUM))
         local height=$((totaly))
     else
-        local geo=${DISP_LIST[$((screen-1))]##* }
+        local geo=${DISP_LIST[$((screen - 1))]##* }
         local res=${geo%%+*}
         local width=${res%%x*}
         local height=${res##*x}
     fi
 
     # allow position time\date on second display
-    if [[ $span = true ]]; then
+    if [[ $span == true ]]; then
         rightpos=$totalx
     else
         rightpos=$width
@@ -269,7 +268,7 @@ lock () {
 }
 
 # Lock screen
-lock_select () {
+lock_select() {
     get_display_list
     get_total_size
     DNUM=${#DISP_LIST[*]}
@@ -277,15 +276,15 @@ lock_select () {
     echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
 
     case "$1" in
-        lock)
-            # use cached wallpaper
-            lock "$IMG_CACHE"
-            ;;
-        capture)
-            # use screen capture
-            capture
-            lock "$IMG_CAP"
-            ;;
+    lock)
+        # use cached wallpaper
+        lock "$IMG_CACHE"
+        ;;
+    capture)
+        # use screen capture
+        capture
+        lock "$IMG_CAP"
+        ;;
     esac
 }
 
@@ -314,50 +313,49 @@ usage() {
 }
 
 # No arguments
-[[ "$1" = '' ]] && usage
+[[ "$1" == '' ]] && usage
 
 # Parse arguments
 for arg in "$@"; do
-    [[ "${arg:0:1}" = '-' ]] || continue
+    [[ "${arg:0:1}" == '-' ]] || continue
     case "$1" in
-        -h | --help)
-            usage
-            break
-            ;;
-        -s | --suspend)
-            runsuspend=true
-            ;&
-        -l | --lock)
-            runlock=true
-            [[ $runsuspend ]] || lockargs="$lockargs --nofork"
-            ;;
-        -c | --capture)
-            runcap=true
-            [[ $runsuspend ]] || lockargs="$lockargs --nofork"
-            ;;
-        -u | --update)
-            runupdate=true
-            argpath="$2"
-            ;;
-        --)
-            lockargs="$lockargs ${@:2}"
-            break
-            ;;
-        *)
-            echo "unknown argument: $1"
-            break
-            ;;
+    -h | --help)
+        usage
+        break
+        ;;
+    -s | --suspend)
+        runsuspend=true
+        ;&
+    -l | --lock)
+        runlock=true
+        [[ $runsuspend ]] || lockargs="$lockargs --nofork"
+        ;;
+    -c | --capture)
+        runcap=true
+        [[ $runsuspend ]] || lockargs="$lockargs --nofork"
+        ;;
+    -u | --update)
+        runupdate=true
+        argpath="$2"
+        ;;
+    --)
+        lockargs="$lockargs ${@:2}"
+        break
+        ;;
+    *)
+        echo "unknown argument: $1"
+        break
+        ;;
     esac
 done
 
 [[ $runupdate ]] && update "$argpath"
 
-[[ $runlock ]] && lock_select lock && \
+[[ $runlock ]] && lock_select lock &&
     { [[ $runsuspend ]] && systemctl suspend; }
 
-[[ $runcap ]] && lock_select capture && \
+[[ $runcap ]] && lock_select capture &&
     { [[ $runsuspend ]] && systemctl suspend; }
-
 
 exit 0
 
