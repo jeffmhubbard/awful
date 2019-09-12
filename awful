@@ -223,7 +223,7 @@ lock() {
         local height=${res##*x}
     fi
 
-    # allow position time\date on second display
+    # Allow position time\date on second display
     if [[ $span == true ]]; then
         rightpos=$totalx
     else
@@ -266,7 +266,7 @@ lock() {
         --locktext="$lockmesg" --lockfailedtext="$failedmesg" \
         --noinputtext="$inputmesg" \
         --show-failed-attempts --ignore-empty-password \
-        --redraw-thread ${lockargs}
+        --redraw-thread --nofork ${lockargs}
 
     postlock
 }
@@ -309,10 +309,6 @@ usage() {
     echo "      Capture screen and lock"
     echo "      $ $APPNAME -c"
     echo
-    echo "  -s --suspend"
-    echo "      Lock screen and suspend system"
-    echo "      $ $APPNAME -s"
-    echo
     exit 1
 }
 
@@ -327,16 +323,13 @@ for arg in "$@"; do
         usage
         break
         ;;
-    -s | --suspend)
-        runsuspend=true
-        ;&
     -l | --lock)
         runlock=true
-        [[ $runsuspend ]] || lockargs="$lockargs --nofork"
+        lockargs="$lockargs"
         ;;
     -c | --capture)
         runcap=true
-        [[ $runsuspend ]] || lockargs="$lockargs --nofork"
+        lockargs="$lockargs"
         ;;
     -u | --update)
         runupdate=true
@@ -355,11 +348,9 @@ done
 
 [[ $runupdate ]] && update "$argpath"
 
-[[ $runlock ]] && lock_select lock &&
-    { [[ $runsuspend ]] && systemctl suspend; }
+[[ $runlock ]] && lock_select lock
 
-[[ $runcap ]] && lock_select capture &&
-    { [[ $runsuspend ]] && systemctl suspend; }
+[[ $runcap ]] && lock_select capture
 
 exit 0
 
