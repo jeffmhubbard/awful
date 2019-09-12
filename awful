@@ -69,7 +69,7 @@ get_total_size() {
 get_image_path() {
     local path="$1"
     if [ ! -d "$path" ]; then
-        IMG_CACHE="$path"
+        img_path="$path"
         return
     fi
     local dir=("$path"/*)
@@ -150,7 +150,11 @@ compose_image() {
 update() {
     echo "Updating cache..."
     local img_path=$1
-    # purge previous image
+
+    # Get image path
+    get_image_path "$img_path"
+
+    # Purge previous image
     [[ -e $IMG_CACHE ]] && rm "$IMG_CACHE"
 
     get_display_list
