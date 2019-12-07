@@ -42,7 +42,7 @@ span=false
 
 # Load config file
 if [ -e "$USER_CONF" ]; then
-    source "$USER_CONF"
+  source "$USER_CONF"
 fi
 
 # Create cache directory
@@ -50,266 +50,294 @@ mkdir -p "$CACHE_DIR"
 
 # Get list of displays
 get_display_list() {
-    local num=0
-    mapfile -t active < <(xrandr --listactivemonitors)
-    for monitor in "${active[@]:1}"; do
-        ((num++))
-        local monitor=$(echo $monitor | sed -r 's/\/[0-9]*//g')
-        local info=($monitor)
-        DISP_LIST+=("$num ${info[3]} ${info[2]}")
-    done
+
+  local num=0
+  mapfile -t active < <(xrandr --listactivemonitors)
+  for monitor in "${active[@]:1}"; do
+    ((num++))
+    local monitor=$(echo $monitor | sed -r 's/\/[0-9]*//g')
+    local info=($monitor)
+    DISP_LIST+=("$num ${info[3]} ${info[2]}")
+  done
+
 }
 
 # Get total combined display resolution
 get_total_size() {
-    TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
+
+  TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
+
 }
 
 # Pass through path if file, or return random if dir
 get_image_path() {
-    local path="$1"
-    if [ ! -d "$path" ]; then
-        img_path="$path"
-        return
-    fi
-    local dir=("$path"/*)
-    dir="${dir[RANDOM % ${#dir[@]}]}"
-    get_image_path "$dir"
+
+  local path="$1"
+  if [ ! -d "$path" ]; then
+    img_path="$path"
+    return
+  fi
+  local dir=("$path"/*)
+  dir="${dir[RANDOM % ${#dir[@]}]}"
+  get_image_path "$dir"
+
 }
 
 # Cache image with scaled to resolution with effects
 cache_image() {
-    local user_img=$1
-    local resx="${2%%x*}"
-    local resy="${2##*x}"
-    local out=$3
-    local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
-    ffmpeg -loglevel -8 -y \
-        -i "$user_img" \
-        -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
-        "$out"
-    echo "Caching $(basename "$user_img") @ ${resx}x${resy}"
+
+  local user_img=$1
+  local resx="${2%%x*}"
+  local resy="${2##*x}"
+  local out=$3
+  local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
+  ffmpeg -loglevel -8 -y \
+    -i "$user_img" \
+    -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
+    "$out"
+  echo "Caching $(basename "$user_img") @ ${resx}x${resy}"
+
 }
 
 # make blue canvas
 make_canvas() {
-    local out=$1
-    echo "Creating canvas @ $TOTAL_SIZE..."
-    ffmpeg \
-        -loglevel -8 -y \
-        -f lavfi \
-        -i "color=blue:$TOTAL_SIZE" \
-        "$out"
+
+  local out=$1
+  echo "Creating canvas @ $TOTAL_SIZE..."
+  ffmpeg \
+    -loglevel -8 -y \
+    -f lavfi \
+    -i "color=blue:$TOTAL_SIZE" \
+    "$out"
+
 }
 
 # Compose lockscreen image from per-resolution versions
 compose_image() {
-    local user_img=$1
-    local canvas="${CACHE_DIR}/canvas.png"
-    local clean_tmp=(${canvas})
-    local dcnt=(${#DISP_LIST[*]})
 
-    make_canvas "$canvas"
+  local user_img=$1
+  local canvas="${CACHE_DIR}/canvas.png"
+  local clean_tmp=(${canvas})
+  local dcnt=(${#DISP_LIST[*]})
 
-    for DISP in "${DISP_LIST[@]}"; do
-        disp=($DISP)
+  make_canvas "$canvas"
 
-        local num="${disp[0]}"
-        local name="${disp[1]}"
-        local geo="${disp[2]##* }"
-        local res="${geo%%+*}"
-        local pos="${geo#*+}"
-        local tmp_img="${CACHE_DIR}/${name}.png"
+  for DISP in "${DISP_LIST[@]}"; do
+    disp=($DISP)
 
-        cache_image "$user_img" "$res" "$tmp_img"
+    local num="${disp[0]}"
+    local name="${disp[1]}"
+    local geo="${disp[2]##* }"
+    local res="${geo%%+*}"
+    local pos="${geo#*+}"
+    local tmp_img="${CACHE_DIR}/${name}.png"
 
-        file_args="$file_args -i $tmp_img"
-        if [ "${dcnt[*]}" -gt "$num" ]; then
-            filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
-        else
-            filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
-        fi
+    cache_image "$user_img" "$res" "$tmp_img"
 
-        clean_tmp+=(${tmp_img})
-    done
+    file_args="$file_args -i $tmp_img"
+    if [ "${dcnt[*]}" -gt "$num" ]; then
+      filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
+    else
+      filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
+    fi
 
-    # compose lockscreen image
-    echo "Merging temp files..."
-    ffmpeg -i ${canvas} ${file_args} \
-        -loglevel -8 -y \
-        -filter_complex "[0:v]${filter_args}" \
-        -map [output]:v \
-        -pix_fmt rgb24 \
-        "$IMG_CACHE"
+    clean_tmp+=(${tmp_img})
+  done
 
-    echo "Cleaning up..."
-    rm ${clean_tmp[*]}
+  # compose lockscreen image
+  echo "Merging temp files..."
+  ffmpeg -i ${canvas} ${file_args} \
+    -loglevel -8 -y \
+    -filter_complex "[0:v]${filter_args}" \
+    -map [output]:v \
+    -pix_fmt rgb24 \
+    "$IMG_CACHE"
+
+  echo "Cleaning up..."
+  rm ${clean_tmp[*]}
+
 }
 
 # Update cached image
 update() {
-    echo "Updating cache..."
-    local img_path=$1
 
-    # Get image path
-    get_image_path "$img_path"
+  echo "Updating cache..."
+  local img_path=$1
 
-    # Purge previous image
-    [[ -e $IMG_CACHE ]] && rm "$IMG_CACHE"
+  # Get image path
+  get_image_path "$img_path"
 
-    get_display_list
-    get_total_size
-    DNUM=${#DISP_LIST[*]}
+  # Purge previous image
+  [[ -e $IMG_CACHE ]] && rm "$IMG_CACHE"
 
-    echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+  get_display_list
+  get_total_size
+  DNUM=${#DISP_LIST[*]}
 
-    if [ "$span" = true ] || [ "$DNUM" = 1 ]; then
-        cache_image "$img_path" "$TOTAL_SIZE" "$IMG_CACHE"
-    else
-        compose_image "$img_path"
-    fi
+  echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
 
-    [[ -e $IMG_CACHE ]] && echo "Done!"
+  if [ "$span" = true ] || [ "$DNUM" = 1 ]; then
+    cache_image "$img_path" "$TOTAL_SIZE" "$IMG_CACHE"
+  else
+    compose_image "$img_path"
+  fi
+
+  [[ -e $IMG_CACHE ]] && echo "Done!"
+
 }
 
 # Cache screen capture with effects
 cache_capture() {
-    ffmpeg -loglevel -8 -y \
-        -f x11grab -framerate 1 \
-        -video_size "$TOTAL_SIZE" \
-        -i :0.0 -vframes 1 \
-        -vf "boxblur=3:1, vignette=angle=PI/4" \
-        "$IMG_CAP"
-    echo "Caching screen capture..."
+
+  ffmpeg -loglevel -8 -y \
+    -f x11grab -framerate 1 \
+    -video_size "$TOTAL_SIZE" \
+    -i :0.0 -vframes 1 \
+    -vf "boxblur=3:1, vignette=angle=PI/4" \
+    "$IMG_CAP"
+  echo "Caching screen capture..."
+
 }
 
 # Capture screen shot
 capture() {
-    cache_capture
-    [[ -e $IMG_CAP ]] && echo "Done!"
+
+  cache_capture
+  [[ -e $IMG_CAP ]] && echo "Done!"
+
 }
 
 prelock() {
-    # pause dunst
-    if [ -n "$(pidof dunst)" ]; then
-        pkill -u "$USER" -USR1 dunst
-    fi
+
+  # pause dunst
+  if [ -n "$(pidof dunst)" ]; then
+    pkill -u "$USER" -USR1 dunst
+  fi
+
 }
 
 # Run after unlocking
 postlock() {
+
     # remove capture
     [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
     # unpause dunst
     if [ -n "$(pidof dunst)" ]; then
         pkill -u "$USER" -USR2 dunst
     fi
+
 }
 
 # Wrap i3lock
 lock() {
-    echo "Locking..."
-    local LOCK_IMG=$1
 
-    local totalx="${TOTAL_SIZE%%x*}"
-    local totaly="${TOTAL_SIZE##*x}"
-    if [ $screen -lt 1 ]; then
-        local width=$((totalx / DNUM))
-        local height=$((totaly))
-    else
-        local geo=${DISP_LIST[$((screen - 1))]##* }
-        local res=${geo%%+*}
-        local width=${res%%x*}
-        local height=${res##*x}
-    fi
+  echo "Locking..."
+  local LOCK_IMG=$1
 
-    # Allow position time\date on second display
-    if [[ $span == true ]]; then
-        rightpos=$totalx
-    else
-        rightpos=$width
-    fi
+  local totalx="${TOTAL_SIZE%%x*}"
+  local totaly="${TOTAL_SIZE##*x}"
+  if [ $screen -lt 1 ]; then
+    local width=$((totalx / DNUM))
+    local height=$((totaly))
+  else
+    local geo=${DISP_LIST[$((screen - 1))]##* }
+    local res=${geo%%+*}
+    local width=${res%%x*}
+    local height=${res##*x}
+  fi
 
-    prelock
+  # Allow position time\date on second display
+  if [[ $span == true ]]; then
+    rightpos=$totalx
+  else
+    rightpos=$width
+  fi
 
-    i3lock \
-        --screen "$screen" \
-        --image="$LOCK_IMG" \
-        --bar-indicator \
-        --bar-position="$height" --bar-direction 1 \
-        --bar-width "$width" --bar-orientation=horizontal \
-        --bar-max-height=28 \
-        --bar-step="$stepper" --bar-periodic-step="$stepper"*2 \
-        --bar-color="$barcolor" \
-        --keyhlcolor="$typingcolor" --bshlcolor="$deletecolor" \
-        --ringvercolor="$authcolor" --ringwrongcolor="$errorcolor" \
-        --timestr="$timetext" --force-clock \
-        --timepos x+"$rightpos"-30:"$height"-80 --time-align 2 \
-        --timecolor="$textcolor" --time-font="$font" --timesize="$textsize" \
-        --datestr="$datetext" \
-        --datepos x+"$rightpos"-30:"$height"-45 --date-align 2 \
-        --datecolor="$subtextcolor" --date-font="$font" --datesize="$subtextsize" \
-        --greetertext="$greetertext" \
-        --greeterpos x+30:"$height"-80 --greeter-align 1 \
-        --greetercolor="$textcolor" --greeter-font="$font" --greetersize="$textsize" \
-        --keylayout 0 \
-        --layoutpos x+30:"$height"-45 --layout-align 1 \
-        --layoutcolor="$subtextcolor" --layout-font="$font" --layoutsize="$subtextsize" \
-        --veriftext="$authmesg" \
-        --verifpos x+10:"$height"-6 --verif-align 1 \
-        --verifcolor="$mesgcolor" --verif-font="$mesgfont" --verifsize="$mesgsize" \
-        --wrongtext="$errormesg" \
-        --wrongpos x+10:"$height"-6 --wrong-align 1 \
-        --wrongcolor="$mesgcolor" --wrong-font="$mesgfont" --wrongsize="$mesgsize" \
-        --modifpos x+"$width"-10:"$height"-6 --modif-align 2 \
-        --statuspos x+10:"$height"-6 \
-        --locktext="$lockmesg" --lockfailedtext="$failedmesg" \
-        --noinputtext="$inputmesg" \
-        --show-failed-attempts --ignore-empty-password \
-        --redraw-thread --nofork ${lockargs}
+  prelock
 
-    postlock
+  i3lock \
+    --screen "$screen" \
+    --image="$LOCK_IMG" \
+    --bar-indicator \
+    --bar-position="$height" --bar-direction 1 \
+    --bar-width "$width" --bar-orientation=horizontal \
+    --bar-max-height=28 \
+    --bar-step="$stepper" --bar-periodic-step="$stepper"*2 \
+    --bar-color="$barcolor" \
+    --keyhlcolor="$typingcolor" --bshlcolor="$deletecolor" \
+    --ringvercolor="$authcolor" --ringwrongcolor="$errorcolor" \
+    --timestr="$timetext" --force-clock \
+    --timepos x+"$rightpos"-30:"$height"-80 --time-align 2 \
+    --timecolor="$textcolor" --time-font="$font" --timesize="$textsize" \
+    --datestr="$datetext" \
+    --datepos x+"$rightpos"-30:"$height"-45 --date-align 2 \
+    --datecolor="$subtextcolor" --date-font="$font" --datesize="$subtextsize" \
+    --greetertext="$greetertext" \
+    --greeterpos x+30:"$height"-80 --greeter-align 1 \
+    --greetercolor="$textcolor" --greeter-font="$font" --greetersize="$textsize" \
+    --keylayout 0 \
+    --layoutpos x+30:"$height"-45 --layout-align 1 \
+    --layoutcolor="$subtextcolor" --layout-font="$font" --layoutsize="$subtextsize" \
+    --veriftext="$authmesg" \
+    --verifpos x+10:"$height"-6 --verif-align 1 \
+    --verifcolor="$mesgcolor" --verif-font="$mesgfont" --verifsize="$mesgsize" \
+    --wrongtext="$errormesg" \
+    --wrongpos x+10:"$height"-6 --wrong-align 1 \
+    --wrongcolor="$mesgcolor" --wrong-font="$mesgfont" --wrongsize="$mesgsize" \
+    --modifpos x+"$width"-10:"$height"-6 --modif-align 2 \
+    --statuspos x+10:"$height"-6 \
+    --locktext="$lockmesg" --lockfailedtext="$failedmesg" \
+    --noinputtext="$inputmesg" \
+    --show-failed-attempts --ignore-empty-password \
+    --redraw-thread --nofork ${lockargs}
+
+  postlock
+
 }
 
 # Lock screen
 lock_select() {
-    get_display_list
-    get_total_size
-    DNUM=${#DISP_LIST[*]}
 
-    echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+  get_display_list
+  get_total_size
+  DNUM=${#DISP_LIST[*]}
 
-    case "$1" in
+  echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+
+  case "$1" in
     lock)
-        # use cached wallpaper
-        lock "$IMG_CACHE"
-        ;;
+      # use cached wallpaper
+      lock "$IMG_CACHE"
+      ;;
     capture)
-        # use screen capture
-        capture
-        lock "$IMG_CAP"
-        ;;
-    esac
+      # use screen capture
+      capture
+      lock "$IMG_CAP"
+      ;;
+  esac
+
 }
 
 # Help message
 usage() {
-    echo
-    echo " $APPNAME $VERSION"
-    echo
-    echo "  -u --update"
-    echo "      Update lock screen image"
-    echo "      $ $APPNAME -u PATH"
-    echo
-    echo "  -l --lock"
-    echo "      Lock screen with cached image"
-    echo "      $ $APPNAME -l"
-    echo
-    echo "  -c --capture"
-    echo "      Capture screen and lock"
-    echo "      $ $APPNAME -c"
-    echo
-    exit 1
+
+  echo
+  echo " $APPNAME $VERSION"
+  echo
+  echo "  -u --update"
+  echo "      Update lock screen image"
+  echo "      $ $APPNAME -u PATH"
+  echo
+  echo "  -l --lock"
+  echo "      Lock screen with cached image"
+  echo "      $ $APPNAME -l"
+  echo
+  echo "  -c --capture"
+  echo "      Capture screen and lock"
+  echo "      $ $APPNAME -c"
+  echo
+  exit 1
+
 }
 
 # No arguments
@@ -317,33 +345,33 @@ usage() {
 
 # Parse arguments
 for arg in "$@"; do
-    [[ "${arg:0:1}" == '-' ]] || continue
-    case "$1" in
+  [[ "${arg:0:1}" == '-' ]] || continue
+  case "$1" in
     -h | --help)
-        usage
-        break
-        ;;
+      usage
+      break
+      ;;
     -l | --lock)
-        runlock=true
-        lockargs="$lockargs"
-        ;;
+      runlock=true
+      lockargs="$lockargs"
+      ;;
     -c | --capture)
-        runcap=true
-        lockargs="$lockargs"
-        ;;
+      runcap=true
+      lockargs="$lockargs"
+      ;;
     -u | --update)
-        runupdate=true
-        argpath="$2"
-        ;;
+      runupdate=true
+      argpath="$2"
+      ;;
     --)
-        lockargs="$lockargs ${@:2}"
-        break
-        ;;
+      lockargs="$lockargs ${@:2}"
+      break
+      ;;
     *)
-        echo "unknown argument: $1"
-        break
-        ;;
-    esac
+      echo "unknown argument: $1"
+      break
+      ;;
+  esac
 done
 
 [[ $runupdate ]] && update "$argpath"
@@ -354,4 +382,4 @@ done
 
 exit 0
 
-# vim: ft=sh:
+# vim: ft=sh ts=2 sw=0 et:
