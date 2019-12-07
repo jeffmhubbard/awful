@@ -5,8 +5,8 @@
 #
 # extbin: ffmpeg i3lock xrandr xdpyinfo
 
-APPNAME='awful'
-VERSION='0.1'
+APP_NAME='awful'
+APP_VER='0.1'
 
 # Paths
 USER_CONF="$HOME/.config/awful/config"
@@ -219,12 +219,12 @@ prelock() {
 # Run after unlocking
 postlock() {
 
-    # remove capture
-    [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
-    # unpause dunst
-    if [ -n "$(pidof dunst)" ]; then
-        pkill -u "$USER" -USR2 dunst
-    fi
+  # remove capture
+  [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
+  # unpause dunst
+  if [ -n "$(pidof dunst)" ]; then
+    pkill -u "$USER" -USR2 dunst
+  fi
 
 }
 
@@ -322,19 +322,16 @@ lock_select() {
 usage() {
 
   echo
-  echo " $APPNAME $VERSION"
+  echo "Usage: $APP_NAME [--update <PATH>] [--lock] [--capture]"
   echo
-  echo "  -u --update"
+  echo "  -u | --update <PATH>"
   echo "      Update lock screen image"
-  echo "      $ $APPNAME -u PATH"
   echo
-  echo "  -l --lock"
+  echo "  -l | --lock"
   echo "      Lock screen with cached image"
-  echo "      $ $APPNAME -l"
   echo
-  echo "  -c --capture"
-  echo "      Capture screen and lock"
-  echo "      $ $APPNAME -c"
+  echo "  -c | --capture"
+  echo "      Capture screenshot and lock"
   echo
   exit 1
 
