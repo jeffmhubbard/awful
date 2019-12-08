@@ -5,14 +5,12 @@
 #
 # extbin: ffmpeg i3lock xrandr xdpyinfo
 
-APP_NAME='awful'
-APP_VER='0.1'
-
-# Paths
+APP_NAME="awful"
+APP_VER="0.2"
 USER_CONF="$HOME/.config/awful/config"
 CACHE_DIR="$HOME/.cache/awful"
-IMG_CACHE="$CACHE_DIR/lockscreen.png"
-IMG_CAP="$CACHE_DIR/capture.png"
+IMAGE_CACHE="$CACHE_DIR/lockscreen.png"
+IMAGE_CAPTURE="$CACHE_DIR/capture.png"
 
 # Defaults
 barcolor=ffffff19
@@ -40,153 +38,261 @@ stepper=10
 screen=0
 span=false
 
-# Load config file
-if [ -e "$USER_CONF" ]; then
-  source "$USER_CONF"
-fi
+# main
+main() {
 
-# Create cache directory
-mkdir -p "$CACHE_DIR"
+  print_app "$APP_NAME $APP_VER"
 
-# Get list of displays
-get_display_list() {
-
-  local num=0
-  mapfile -t active < <(xrandr --listactivemonitors)
-  for monitor in "${active[@]:1}"; do
-    ((num++))
-    local monitor=$(echo $monitor | sed -r 's/\/[0-9]*//g')
-    local info=($monitor)
-    DISP_LIST+=("$num ${info[3]} ${info[2]}")
-  done
-
-}
-
-# Get total combined display resolution
-get_total_size() {
-
-  TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
-
-}
-
-# Pass through path if file, or return random if dir
-get_image_path() {
-
-  local path="$1"
-  if [ ! -d "$path" ]; then
-    img_path="$path"
-    return
+  # No arguments
+  if [ "$1" == '' ]; then
+    print_err "No arguments passed"
+    usage
+    exit 1
   fi
-  local dir=("$path"/*)
-  dir="${dir[RANDOM % ${#dir[@]}]}"
-  get_image_path "$dir"
 
-}
-
-# Cache image with scaled to resolution with effects
-cache_image() {
-
-  local user_img=$1
-  local resx="${2%%x*}"
-  local resy="${2##*x}"
-  local out=$3
-  local scale="$resx:$resy:force_original_aspect_ratio=increase,crop=$resx:$resy"
-  ffmpeg -loglevel -8 -y \
-    -i "$user_img" \
-    -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
-    "$out"
-  echo "Caching $(basename "$user_img") @ ${resx}x${resy}"
-
-}
-
-# make blue canvas
-make_canvas() {
-
-  local out=$1
-  echo "Creating canvas @ $TOTAL_SIZE..."
-  ffmpeg \
-    -loglevel -8 -y \
-    -f lavfi \
-    -i "color=blue:$TOTAL_SIZE" \
-    "$out"
-
-}
-
-# Compose lockscreen image from per-resolution versions
-compose_image() {
-
-  local user_img=$1
-  local canvas="${CACHE_DIR}/canvas.png"
-  local clean_tmp=(${canvas})
-  local dcnt=(${#DISP_LIST[*]})
-
-  make_canvas "$canvas"
-
-  for DISP in "${DISP_LIST[@]}"; do
-    disp=($DISP)
-
-    local num="${disp[0]}"
-    local name="${disp[1]}"
-    local geo="${disp[2]##* }"
-    local res="${geo%%+*}"
-    local pos="${geo#*+}"
-    local tmp_img="${CACHE_DIR}/${name}.png"
-
-    cache_image "$user_img" "$res" "$tmp_img"
-
-    file_args="$file_args -i $tmp_img"
-    if [ "${dcnt[*]}" -gt "$num" ]; then
-      filter_args="$filter_args[${num}:v]overlay=${pos%%+*}:${pos##*+}[v${num}];[v${num}]"
-    else
-      filter_args="$filter_args[$num:v]overlay=${pos%%+*}:${pos##*+}[output]"
-    fi
-
-    clean_tmp+=(${tmp_img})
+  # Parse arguments
+  for arg in "$@"; do
+    [[ "${arg:0:1}" == '-' ]] || continue
+    case "$1" in
+      -h | --help)
+        usage
+        exit
+        ;;
+      -l | --lock)
+        runlock=true
+        lockargs="$lockargs"
+        ;;
+      -c | --capture)
+        runcap=true
+        lockargs="$lockargs"
+        ;;
+      -u | --update)
+        runupdate=true
+        argpath="$2"
+        ;;
+      --)
+        lockargs="$lockargs ${*:2}"
+        ;;
+      *)
+        print_err "Unknown argument: $1"
+        exit 1
+        ;;
+    esac
   done
 
-  # compose lockscreen image
-  echo "Merging temp files..."
-  ffmpeg -i ${canvas} ${file_args} \
-    -loglevel -8 -y \
-    -filter_complex "[0:v]${filter_args}" \
-    -map [output]:v \
-    -pix_fmt rgb24 \
-    "$IMG_CACHE"
+  # Load config file
+  if [ -e "$USER_CONF" ]; then
+    # shellcheck source=/dev/null
+    source "$USER_CONF"
+  fi
 
-  echo "Cleaning up..."
-  rm ${clean_tmp[*]}
+  # Create cache directory
+  mkdir -p "$CACHE_DIR" 2>/dev/null
+
+  if [ -n "$runupdate" ]; then
+    update "$argpath"
+
+  elif [ -n "$runlock" ]; then
+    lock_select lock
+
+  elif [ -n "$runcap" ]; then
+    lock_select capture
+
+  else
+    print_err "Something went wrong"
+    exit 1
+  fi
 
 }
 
 # Update cached image
 update() {
 
-  echo "Updating cache..."
-  local img_path=$1
+  local path="$1"
 
-  # Get image path
-  get_image_path "$img_path"
+  print_inf "Updating cache..."
 
-  # Purge previous image
-  [[ -e $IMG_CACHE ]] && rm "$IMG_CACHE"
+  get_image_path "$path"
 
   get_display_list
   get_total_size
-  DNUM=${#DISP_LIST[*]}
+  DISPLAY_COUNT=${#DISPLAY_LIST[*]}
 
-  echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+  print_display_info "$DISPLAY_COUNT" "$TOTAL_SIZE" "$span"
 
-  if [ "$span" = true ] || [ "$DNUM" = 1 ]; then
-    cache_image "$img_path" "$TOTAL_SIZE" "$IMG_CACHE"
+  [[ -f "$IMAGE_CACHE" ]] && rm "$IMAGE_CACHE"
+
+  if [ "$span" = true ] || [ "$DISPLAY_COUNT" = 1 ]; then
+    cache_image "$TOTAL_SIZE" "$IMAGE_CACHE"
+
   else
-    compose_image "$img_path"
+    compose_image
   fi
 
-  [[ -e $IMG_CACHE ]] && echo "Done!"
+  [[ -f "$IMAGE_CACHE" ]] && print_inf "Done!"
 
 }
 
-# Cache screen capture with effects
+# Pass through path if file, or return random if dir
+# returns $IMAGE_PATH
+get_image_path() {
+
+  local path="$1"
+  local dir=("$path"/*)
+  local rpath
+
+  if [ -f "$path" ]; then
+    IMAGE_PATH="$path"
+
+  elif [ -d "$path" ]; then
+    rpath="${dir[RANDOM % ${#dir[@]}]}"
+    get_image_path "$rpath"
+
+  else
+    print_err "Error locating image: $path"
+    exit 1
+  fi
+
+}
+
+# Get list of displays
+# returns $DISPLAY_LIST
+get_display_list() {
+
+  local id=0
+  local display
+  local info
+
+  mapfile -t active < <(xrandr --listactivemonitors)
+  for display in "${active[@]:1}"; do
+    ((id++))
+    IFS=" " read -r -a info <<< "$(echo "$display" | sed -r 's/\/[0-9]*//g')"
+    DISPLAY_LIST+=("$id ${info[3]} ${info[2]}")
+  done
+
+}
+
+# Get total combined display resolution
+# returns $TOTAL_SIZE
+get_total_size() {
+
+  TOTAL_SIZE=$(xdpyinfo | grep -w "dimensions" | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/')
+
+}
+
+# display info
+print_display_info() {
+
+  local count="$1"
+  local size="$2"
+
+  print_msg "Displays: $count Size: $size Span: $span"
+
+}
+
+# Cache image with scaled to resolution with effects
+cache_image() {
+
+  local res_x="${1%%x*}"
+  local res_y="${1##*x}"
+  local outfile="$2"
+  local scale="$res_x:$res_y:force_original_aspect_ratio=increase,crop=$res_x:$res_y"
+
+  print_act "Caching $(basename "$IMAGE_PATH") @ ${res_x}x${res_y}"
+
+  ffmpeg -loglevel -8 -y \
+    -i "$IMAGE_PATH" \
+    -vf "scale=$scale, boxblur=3:1, vignette=angle=PI/4" \
+    "$outfile"
+
+}
+
+# Compose lockscreen image from per-resolution versions and canvas
+compose_image() {
+
+  local tmp_files=()
+  local display
+
+  for display in "${DISPLAY_LIST[@]}"; do
+
+    IFS=" " read -r -a info  <<< "$display"
+    local id="${info[0]}"
+    local device="${info[1]}"
+    local geometry="${info[2]}"
+
+    read -r -a cols <<< "${geometry//[x+-]/ }"
+    local position="${geometry#*${cols[1]}}"
+    local resolution="${geometry%${position}*}"
+
+    read -r -a val <<< "${position//[+-]/ }"
+    read -r -a sym <<< "${position//[0-9]/ }"
+    local pos_x="${sym[0]}${val[0]}"
+    local pos_y="${sym[1]}${val[1]}"
+
+    local tmp_img="${CACHE_DIR}/${device}.png"
+
+    cache_image "$resolution" "$tmp_img"
+
+    file_args="$file_args -i $tmp_img"
+    if [ "$DISPLAY_COUNT" -gt "$id" ]; then
+      filter_args="${filter_args}[${id}:v]overlay=${pos_x}:${pos_y}[v${id}];[v${id}]"
+    else
+      filter_args="${filter_args}[${id}:v]overlay=${pos_x}:${pos_y}[output]"
+    fi
+
+    tmp_files+=("$tmp_img")
+  done
+
+  make_canvas
+  tmp_files+=("$CANVAS")
+
+  print_act "Merging temp files..."
+
+  ffmpeg -i ${CANVAS} ${file_args} \
+    -filter_complex "[0:v]${filter_args}" \
+    -map [output]:v \
+    -pix_fmt rgb24 \
+    -loglevel -8 -y \
+    "$IMAGE_CACHE"
+
+  print_act "Cleaning up..."
+
+  rm "${tmp_files[@]}"
+
+}
+
+# make blue canvas
+# returns $CANVAS
+make_canvas() {
+
+  CANVAS="$CACHE_DIR/canvas.png"
+
+  print_act "Creating canvas @ $TOTAL_SIZE..."
+
+  ffmpeg \
+    -loglevel -8 -y \
+    -f lavfi \
+    -i "color=blue:$TOTAL_SIZE" \
+    "$CANVAS"
+
+}
+
+# Capture screen shot
+capture() {
+
+  print_act "Caching screen capture..."
+
+  cache_capture
+
+  if [ ! -f "$IMAGE_CAPTURE" ]; then
+    print_err "Failed to capture screen"
+    exit 1
+  fi
+
+}
+
+# grab frame and apply effects
+# returns $IMAGE_CAPTURE
 cache_capture() {
 
   ffmpeg -loglevel -8 -y \
@@ -194,70 +300,71 @@ cache_capture() {
     -video_size "$TOTAL_SIZE" \
     -i :0.0 -vframes 1 \
     -vf "boxblur=3:1, vignette=angle=PI/4" \
-    "$IMG_CAP"
-  echo "Caching screen capture..."
+    "$IMAGE_CAPTURE"
 
 }
 
-# Capture screen shot
-capture() {
+# Lock screen
+lock_select() {
 
-  cache_capture
-  [[ -e $IMG_CAP ]] && echo "Done!"
+  get_display_list
+  get_total_size
+  DISPLAY_COUNT=${#DISPLAY_LIST[*]}
 
-}
+  print_display_info "$DISPLAY_COUNT" "$TOTAL_SIZE" "$span"
 
-prelock() {
-
-  # pause dunst
-  if [ -n "$(pidof dunst)" ]; then
-    pkill -u "$USER" -USR1 dunst
-  fi
-
-}
-
-# Run after unlocking
-postlock() {
-
-  # remove capture
-  [[ -e "$IMG_CAP" ]] && rm "$IMG_CAP"
-  # unpause dunst
-  if [ -n "$(pidof dunst)" ]; then
-    pkill -u "$USER" -USR2 dunst
-  fi
+  case "$1" in
+    lock)
+      # use cached wallpaper
+      lock "$IMAGE_CACHE"
+      ;;
+    capture)
+      # use screen capture
+      capture
+      lock "$IMAGE_CAPTURE"
+      ;;
+  esac
 
 }
 
 # Wrap i3lock
 lock() {
 
-  echo "Locking..."
-  local LOCK_IMG=$1
+  local image="$1"
 
-  local totalx="${TOTAL_SIZE%%x*}"
-  local totaly="${TOTAL_SIZE##*x}"
+  if [ ! -f "$image" ]; then
+    print_err "Cached image not found"
+    print_err "Please run --update again"
+    exit 1
+  fi
+
+  local total_x="${TOTAL_SIZE%%x*}"
+  local total_y="${TOTAL_SIZE##*x}"
+
   if [ $screen -lt 1 ]; then
-    local width=$((totalx / DNUM))
-    local height=$((totaly))
+    local width=$((total_x / DISPLAY_COUNT))
+    local height=$((total_y))
   else
-    local geo=${DISP_LIST[$((screen - 1))]##* }
-    local res=${geo%%+*}
-    local width=${res%%x*}
-    local height=${res##*x}
+    local geometry=${DISPLAY_LIST[$((screen - 1))]##* }
+    local resolution=${geometry%%[+-]*}
+    local width=${resolution%%x*}
+    local height=${resolution##*x}
   fi
 
   # Allow position time\date on second display
   if [[ $span == true ]]; then
-    rightpos=$totalx
+    rightpos="$total_x"
   else
-    rightpos=$width
+    rightpos="$width"
   fi
 
   prelock
 
+  print_inf "Locking..."
+
   i3lock \
     --screen "$screen" \
-    --image="$LOCK_IMG" \
+    --image="$image" \
     --bar-indicator \
     --bar-position="$height" --bar-direction 1 \
     --bar-width "$width" --bar-orientation=horizontal \
@@ -289,33 +396,58 @@ lock() {
     --locktext="$lockmesg" --lockfailedtext="$failedmesg" \
     --noinputtext="$inputmesg" \
     --show-failed-attempts --ignore-empty-password \
-    --redraw-thread --nofork ${lockargs}
+    --redraw-thread --nofork "$lockargs"
+
+  print_inf "Unlocking..."
 
   postlock
 
 }
 
-# Lock screen
-lock_select() {
+prelock() {
 
-  get_display_list
-  get_total_size
-  DNUM=${#DISP_LIST[*]}
+  print_msg "Init prelock"
 
-  echo "Displays: $DNUM    Size: $TOTAL_SIZE    Span: $span"
+  # pause dunst
+  if [ -n "$(pidof dunst)" ]; then
+    pkill -u "$USER" -USR1 dunst
+  fi
 
-  case "$1" in
-    lock)
-      # use cached wallpaper
-      lock "$IMG_CACHE"
-      ;;
-    capture)
-      # use screen capture
-      capture
-      lock "$IMG_CAP"
-      ;;
-  esac
+}
 
+postlock() {
+
+  print_msg "Init postlock"
+
+  # remove capture
+  [[ -f "$IMAGE_CAPTURE" ]] && rm "$IMAGE_CAPTURE"
+
+  # unpause dunst
+  if [ -n "$(pidof dunst)" ]; then
+    pkill -u "$USER" -USR2 dunst
+  fi
+
+}
+
+# Format output
+print_app() {
+  echo -e "\e[90m[\e[95mA\e[90m] \e[94m$1\e[0m"
+}
+
+print_inf() {
+  echo -e "\e[90m[\e[97mi\e[90m] \e[97m$1\e[0m"
+}
+
+print_msg() {
+  echo -e "\e[90m[\e[93m-\e[90m] \e[93m$1\e[0m"
+}
+
+print_act() {
+  echo -e "\e[90m[\e[92m+\e[90m] \e[92m$1\e[0m"
+}
+
+print_err() {
+  echo -e "\e[90m[\e[91m!\e[90m] \e[91m$1\e[0m"
 }
 
 # Help message
@@ -333,49 +465,10 @@ usage() {
   echo "  -c | --capture"
   echo "      Capture screenshot and lock"
   echo
-  exit 1
 
 }
 
-# No arguments
-[[ "$1" == '' ]] && usage
-
-# Parse arguments
-for arg in "$@"; do
-  [[ "${arg:0:1}" == '-' ]] || continue
-  case "$1" in
-    -h | --help)
-      usage
-      break
-      ;;
-    -l | --lock)
-      runlock=true
-      lockargs="$lockargs"
-      ;;
-    -c | --capture)
-      runcap=true
-      lockargs="$lockargs"
-      ;;
-    -u | --update)
-      runupdate=true
-      argpath="$2"
-      ;;
-    --)
-      lockargs="$lockargs ${@:2}"
-      break
-      ;;
-    *)
-      echo "unknown argument: $1"
-      break
-      ;;
-  esac
-done
-
-[[ $runupdate ]] && update "$argpath"
-
-[[ $runlock ]] && lock_select lock
-
-[[ $runcap ]] && lock_select capture
+main "$@"
 
 exit 0
 
